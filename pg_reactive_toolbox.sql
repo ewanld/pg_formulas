@@ -43,7 +43,7 @@ LANGUAGE plpgsql
 AS $proc$
 begin
 	execute format($$
-		ALTER TABLE %I enable TRIGGER "REVDATE_trgfun_%I";
+		ALTER TABLE %I enable TRIGGER "REVDATE_trg_%I";
 		$$, table_name, id);
 end;
 $proc$;
@@ -56,7 +56,7 @@ LANGUAGE plpgsql
 AS $proc$
 begin
 	execute format($$
-		ALTER TABLE %I disable TRIGGER "REVDATE_trgfun_%I";
+		ALTER TABLE %I disable TRIGGER "REVDATE_trg_%I";
 		$$, table_name, id);
 end;
 $proc$;
