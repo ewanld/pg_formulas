@@ -1,7 +1,7 @@
 # pg_reactive_toolbox
 Postgresql toolbox to make the data more reactive ⚡ using triggers.
 
-🚧 WORK IN PROGRES S🚧
+🚧 WORK IN PROGRESS 🚧
 
 # Usage
 Load the script in your database:
