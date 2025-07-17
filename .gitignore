@@ -1,1 +1,5 @@
-﻿postgresql reactive toolbox.pptx
+# Ignore virtual environment directories
+venv/
+
+postgresql reactive toolbox.pptx
+tests/__pycache__
