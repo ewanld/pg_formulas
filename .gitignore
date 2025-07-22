@@ -3,3 +3,4 @@ venv/
 
 postgresql reactive toolbox.pptx
 tests/__pycache__
+tests/settings.py
