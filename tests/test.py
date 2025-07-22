@@ -73,6 +73,8 @@ class TestModule(unittest.TestCase):
         # to make test data available for inspection after the test
         self.conn.commit()
 
+    def testCOUNTLNK(self):
+        
 
 if __name__ == '__main__':
     unittest.main()

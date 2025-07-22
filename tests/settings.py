@@ -1,9 +1,9 @@
 # Database configuration
 DATABASE = {
-    "host": "slaztocatq0101.azy.azurestack.ssg",
+    "host": "localhost",
     "port": 5432,
-    "name": "orga",
-    "user": "orga",
-    "password": "orga",
-    "schema": "ewan",
+    "name": "postgres",
+    "user": "postgres",
+    "password": "XXXX",
+    "schema": "public",
 }
