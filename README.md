@@ -75,6 +75,6 @@ Functions to implement :
 | XXX_create(id, [args]) | Create the triggers. After creation of the triggers, a full refresh of the data is done (no need to call the refresh function manually). |
 | XXX_enable(id, [arg]) | Enable the triggers (triggers are enabled by default) |
 | XXX_disable(id, [args]) | Disable the triggers while keeping them in the database structure. |
-| XXX_drop(id, args) | Drop (delete) the triggers. |
+| XXX_drop(id) | Drop (delete) the triggers. |
 | XXX_refresh_{id} | Full refresh of the data. Useful after the triggers were disabled the re-enabled, to re-sync the data. |
 
