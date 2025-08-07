@@ -37,7 +37,7 @@ class TestModule(unittest.TestCase):
         self.conn.close()  # Close the connection
     
     def testREVDATE(self):
-        self.cur.execute("drop table if exists customer;");
+        self.cur.execute("drop table if exists customer cascade;");
         self.cur.execute("create table customer (id SERIAL PRIMARY KEY, name text, last_modified timestamp default null);");
 
         func_id="customer_last_modified"
@@ -46,7 +46,7 @@ class TestModule(unittest.TestCase):
         self.cur.execute("insert into customer(name) values('Cust1')")
         self.cur.execute("insert into customer(name) values('Cust2')")
         
-        # step 1: check that and check on insert the last_modified field is set to the current time
+        # test 1: check that and check on insert the last_modified field is set to the current time
         self.cur.execute("select * from customer;")
         records = self.cur.fetchall()
         self.assertEqual(len(records), 2)
@@ -54,7 +54,7 @@ class TestModule(unittest.TestCase):
             last_modified = record["last_modified"]
             self.assertTrue(datetime.now() - last_modified < timedelta(seconds=10));
         
-        # step 2: check that disable works
+        # test 2: check that disable works
         self.cur.execute(f"call REVDATE_disable('{func_id}', 'customer')")
         self.cur.execute("insert into customer(name) values('Cust3')")
         self.cur.execute("select * from customer where name='Cust3';")
@@ -62,7 +62,7 @@ class TestModule(unittest.TestCase):
         last_modified = record["last_modified"]
         self.assertIsNone(last_modified)
 
-        # step 3: check that enable+update works
+        # test 3: check that enable+update works
         self.cur.execute(f"call REVDATE_enable('{func_id}', 'customer')")
         self.cur.execute("update customer set name='Cust4' where name='Cust3'")
         self.cur.execute("select * from customer where name='Cust4';")
@@ -73,8 +73,71 @@ class TestModule(unittest.TestCase):
         # to make test data available for inspection after the test
         self.conn.commit()
 
+    # data model: customer -1-N-> invoice
     def testCOUNTLNK(self):
+        self.cur.execute("drop table if exists invoice cascade;");
+        self.cur.execute("drop table if exists customer cascade;");
+
+        self.cur.execute("create table customer (id int PRIMARY KEY, name text, invoice_count int default 0);")
+        self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
+
+        func_id = 'customer_invoices_count'
+
+        self.cur.execute(f"call COUNTLNK_create('{func_id}', 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');")
+        self.cur.execute("commit;")
+
+        # test 1 : insert invoices
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
+        self.cur.execute("commit;")
+
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 2)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 1)
+
+        # test 2 : delete invoices
+        self.cur.execute("delete from invoice where id in (1, 3);")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+
+        # test 3 : manual refresh
+        self.cur.execute("update customer set invoice_count=0;")
+        self.cur.execute(f"call COUNTLNK_refresh('{func_id}');")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+
+        # test 4 : truncate table
+        self.cur.execute("truncate table invoice;")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 0)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+
+        # test 5 : delete whole table
+        self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
+        self.cur.execute("delete from invoice;")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 0)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+
+        # test 6 : update invoice customer, verify that counts are OK
+        self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 2)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 1)
         
+        self.cur.execute("update invoice set customer_id=2 where id=2")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 2)
+        
+        self.cur.execute("update invoice set customer_id=1")
+        self.assert_sql_equal("select invoice_count from customer where id=1;", 3)
+        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+
+        # clean up
+        self.cur.execute("drop table if exists invoice cascade;");
+        self.cur.execute("drop table if exists customer cascade;");
+
+    # assert that the sql query returns a single row containing a single scalar equal to expected value.
+    def assert_sql_equal(self, sql, expected):
+        self.cur.execute(sql)
+        result = self.cur.fetchone()
+        self.assertEqual(list(result.values())[0], expected)
 
 if __name__ == '__main__':
     unittest.main()
