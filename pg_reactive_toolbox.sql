@@ -81,6 +81,18 @@ end;
 $proc$;
 
 
+CREATE or replace PROCEDURE REVDATE_refresh (
+	id TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+begin
+	execute format($$
+		call "REVDATE_refresh_%I"();
+		$$, id);
+end;
+$proc$;
+
 --------------------------------------------------------------------------------
 -- COUNTLNK
 --------------------------------------------------------------------------------
@@ -167,13 +179,22 @@ BEGIN
 		id -- trigger function name
 	);
 
-	execute format($sql$
-		call COUNTLNK_refresh_%I
-		$sql$,
-		id
-	);
+	execute format('call "COUNTLNK_refresh_%I"()', id);
 
 END;
+$proc$;
+
+
+CREATE or replace PROCEDURE COUNTLNK_refresh (
+	id TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+begin
+	execute format($$
+		call "COUNTLNK_refresh_%I"();
+		$$, id);
+end;
 $proc$;
 
 --------------------------------------------------------------------------------
@@ -283,7 +304,7 @@ BEGIN
 		group_by_column -- group by %I;
 	);
 
-	execute format('call AGG_refresh_%I()', id);
+	execute format('call "AGG_refresh_%I"()', id);
 END;
 $proc$;
 
