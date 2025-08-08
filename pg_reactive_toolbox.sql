@@ -218,6 +218,7 @@ DECLARE
 	group_by_columns_joined TEXT; -- group by column names, joined with ','
 	group_by_columns_new_joined TEXT; -- group by column names where each name is prefixed with 'NEW.', joined with ','
 	where_condition_on_group_by TEXT := ''; -- SQL fragment : "grp1 = OLD.grp1 AND grp2 = OLD.grp2..."
+	where_condition_on_group_by_OLDNEW TEXT := ''; -- SQL fragment : "OLD.grp1 = NEW.grp1 AND OLD.grp2 = NEW.grp2..."
 	where_condition_on_group_by_qual TEXT := ''; -- SQL fragment : "grp1 = table_name.grp1 AND grp2 = table_name.grp2..."
 BEGIN
 	-- set aggregate table name
@@ -249,6 +250,14 @@ BEGIN
 		end if;
 	end loop;
 
+	-- init where_condition_on_group_by_OLDNEW
+	for i in 1..array_length(group_by_column, 1) LOOP
+		where_condition_on_group_by_OLDNEW := where_condition_on_group_by_OLDNEW || format('OLD.%I = NEW.%I', group_by_column_quoted[i], group_by_column_quoted[i]);
+		if i < array_length(group_by_column, 1) then
+			where_condition_on_group_by_OLDNEW := where_condition_on_group_by_OLDNEW || ' AND ';
+		end if;
+	end loop;
+	
 	-- create aggregate table
 	execute format($tbl$
 		create table %I as
@@ -271,7 +280,7 @@ BEGIN
 	);
 
 	-- create main trigger
-	execute format($fun$
+	str := format($fun$
 		CREATE OR REPLACE FUNCTION AGG_trgfun_%I() --id
 		RETURNS TRIGGER AS $inner_trg$
 			DECLARE
@@ -308,11 +317,6 @@ BEGIN
 							id_of_max = (select %I from %I where %s order by %I desc limit 1) --pk, table_name, where_condition_on_group_by, aggregate_column
 						where %s; -- where_condition_on_group_by
 					end if;
-				-- ELSIF TG_OP = 'UPDATE' then
-				END IF;
-				RETURN NEW;
-			END;
-			$inner_trg$ LANGUAGE plpgsql;
 		$fun$
 		, id
 		, table_name, pk
@@ -339,8 +343,88 @@ BEGIN
 		, aggregate_column, table_name, where_condition_on_group_by
 		, pk, table_name, where_condition_on_group_by, aggregate_column
 		, where_condition_on_group_by
+		) || format($fun$
+				ELSIF TG_OP = 'UPDATE' then
+					/* Only update if group by columns changed */
+					/* compare each group by column between OLD and NEW */
+					IF (NOT %s) THEN -- where_condition_on_group_by_OLDNEW
+						/* Decrement row_count and update min/max for OLD group */
+						select id_of_min, id_of_max
+						into id_of_min_val, id_of_max_val
+						from %I -- agg_table
+						where %s; -- where_condition_on_group_by
 
+						update %I set row_count=row_count-1 -- agg_table
+						where %s; -- where_condition_on_group_by
+
+						if id_of_min_val = OLD.%I then -- pk
+							update %I set -- agg_table
+								min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+								id_of_min = (select %I from %I where %s order by %I asc limit 1) -- pk, table_name, where_condition_on_group_by, aggregate_column
+							where %s; -- where_condition_on_group_by
+						end if;
+						if id_of_max_val = OLD.%I then -- pk
+							update %I set -- agg_table
+								max_value = (select max(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+								id_of_max = (select %I from %I where %s order by %I desc limit 1) -- pk, table_name, where_condition_on_group_by, aggregate_column
+							where %s; -- where_condition_on_group_by
+						end if;
+
+						/* Increment row_count and update min/max for NEW group */
+						insert into %I(%s, min_value, id_of_min, max_value, id_of_max, row_count) -- agg_table, group_by_columns_joined
+						values(%s, NEW.%I, NEW.%I, NEW.%I, NEW.%I, 1) -- group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
+						on conflict(%s) do update set -- group_by_columns_joined
+							min_value = least(%I.min_value, NEW.%I), -- agg_table, aggregate_column
+							id_of_min=case when NEW.%I < %I.min_value then NEW.%I else %I.id_of_min END, -- aggregate_column, agg_table, pk, agg_table
+							max_value=GREATEST(%I.max_value, NEW.%I), -- agg_table, aggregate_column
+							id_of_max=case when  NEW.%I > %I.max_value then NEW.%I else %I.id_of_max END, -- aggregate_column, agg_table, pk, agg_table
+							row_count=%I.row_count+1; -- agg_table
+					/* If group by columns did not change, only update min/max if aggregate_column changed */
+					ELSIF OLD.%I <> NEW.%I THEN -- aggregate_column, aggregate_column
+						update %I set -- agg_table
+							min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+							id_of_min = (select %I from %I where %s order by %I asc limit 1), -- pk, table_name, where_condition_on_group_by, aggregate_column
+							max_value = (select max(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+							id_of_max = (select %I from %I where %s order by %I desc limit 1) -- pk, table_name, where_condition_on_group_by, aggregate_column
+						where %s; -- where_condition_on_group_by
+					END IF;
+				END IF;
+				RETURN NEW;
+			END;
+			$inner_trg$ LANGUAGE plpgsql;
+		$fun$
+		, where_condition_on_group_by_OLDNEW
+		, agg_table
+		, where_condition_on_group_by
+		, agg_table
+		, where_condition_on_group_by
+		, pk
+		, agg_table
+		, aggregate_column, table_name, where_condition_on_group_by
+		, pk, table_name, where_condition_on_group_by, aggregate_column
+		, where_condition_on_group_by
+		, pk
+		, agg_table
+		, aggregate_column, table_name, where_condition_on_group_by
+		, pk, table_name, where_condition_on_group_by, aggregate_column
+		, where_condition_on_group_by
+		, agg_table, group_by_columns_joined
+		, group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
+		, group_by_columns_joined
+		, agg_table, aggregate_column
+		, aggregate_column, agg_table, pk, agg_table
+		, agg_table, aggregate_column
+		, aggregate_column, agg_table, pk, agg_table
+		, agg_table
+		, aggregate_column, aggregate_column
+		, agg_table
+		, aggregate_column, table_name, where_condition_on_group_by
+		, pk, table_name, where_condition_on_group_by, aggregate_column
+		, aggregate_column, table_name, where_condition_on_group_by
+		, pk, table_name, where_condition_on_group_by, aggregate_column
+		, where_condition_on_group_by
 	);
+	execute str;
 
     execute format($trg$
 		CREATE or replace TRIGGER AGG_trg_%I
