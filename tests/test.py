@@ -234,7 +234,16 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['id_of_max'], 7)
         self.assertEqual(record['row_count'], 4)
 
-        # test : delete invoice, id is min id (neither min nor max)
+        # test : delete invoice, amount is min amount
+        self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
+        "(8, 'invoice 8', 2, 'FR', 1.0);")
+        self.cur.execute(f"select * from {agg_table} where customer_id=2 and country='FR'")
+        record = self.cur.fetchone()
+        self.assertEqual(record['min_value'], Decimal('1.00'))
+        self.assertEqual(record['id_of_min'], 8)
+        self.assertEqual(record['max_value'], Decimal('7.70'))
+        self.assertEqual(record['id_of_max'], 7)
+        self.assertEqual(record['row_count'], 5)
         self.cur.execute("delete from invoice where id=8")
         self.cur.execute(f"select * from {agg_table} where customer_id=2 and country='FR'")
         record = self.cur.fetchone()
@@ -244,7 +253,31 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['id_of_max'], 7)
         self.assertEqual(record['row_count'], 4)
 
+        # test : delete invoice, amount is max amount
+        self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
+        "(9, 'invoice 9', 2, 'FR', 9.9);")
+        self.cur.execute(f"select * from {agg_table} where customer_id=2 and country='FR'")
+        record = self.cur.fetchone()
+        self.assertEqual(record['min_value'], Decimal('1.10'))
+        self.assertEqual(record['id_of_min'], 6)
+        self.assertEqual(record['max_value'], Decimal('9.90'))
+        self.assertEqual(record['id_of_max'], 9)
+        self.assertEqual(record['row_count'], 5)
+        self.cur.execute("delete from invoice where id=9")
+        self.cur.execute(f"select * from {agg_table} where customer_id=2 and country='FR'")
+        record = self.cur.fetchone()
+        self.assertEqual(record['min_value'], Decimal('1.10'))
+        self.assertEqual(record['id_of_min'], 6)
+        self.assertEqual(record['max_value'], Decimal('7.70'))
+        self.assertEqual(record['id_of_max'], 7)
+        self.assertEqual(record['row_count'], 4)
+
+
         # TODO test update case
+        # test : update invoice amount
+        # self.cur.execute("update invoice set amount= where id=8")
+
+        
 
     def testTREELEVEL(self):
         self.cur.execute("drop table if exists node cascade;");
