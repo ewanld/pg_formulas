@@ -244,6 +244,49 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['id_of_max'], 7)
         self.assertEqual(record['row_count'], 4)
 
+        # TODO test update case
+
+    def testTREELEVEL(self):
+        self.cur.execute("drop table if exists node cascade;");
+        self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
+
+        self.cur.execute("call TREELEVEL_create('treelevel', 'node', 'id', 'parent_id', 'level')")
+        
+        # test : insert root node
+        self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")
+        self.assert_sql_equal("select level from node where id=1;", 0)
+
+        # test : insert level 1 node
+        self.cur.execute("insert into node(id, name, parent_id) values(2, 'node 2', 1)")
+        self.assert_sql_equal("select level from node where id=1;", 0)
+        self.assert_sql_equal("select level from node where id=2;", 1)
+
+        # test : insert level 2 node
+        self.cur.execute("insert into node(id, name, parent_id) values(3, 'node 3', 2)")
+        self.assert_sql_equal("select level from node where id=3;", 2)
+
+        # test : update parent of level 2 node with no children --> should become level 1
+        self.cur.execute("insert into node(id, name, parent_id) values(4, 'node 4', null)")
+        self.cur.execute("update node set parent_id=4 where id=3")
+        self.assert_sql_equal("select level from node where id=3;", 1)
+
+        # test : remove parent of level 1 node with no children --> should become level 0
+        self.cur.execute("update node set parent_id=null where id=3")
+        self.assert_sql_equal("select level from node where id=3;", 0)
+
+        # test : update parent of level 1 node with children --> should become level 2 and update children
+        self.cur.execute("insert into node(id, name, parent_id) values(5, 'node 5', 1)")
+        self.cur.execute("insert into node(id, name, parent_id) values(6, 'node 6', 5)")
+        self.cur.execute("insert into node(id, name, parent_id) values(7, 'node 7', 1)")
+        self.assert_sql_equal("select level from node where id=5;", 1)
+        self.assert_sql_equal("select level from node where id=6;", 2)
+        self.assert_sql_equal("select level from node where id=7;", 1)
+        self.cur.execute("update node set parent_id=7 where id=5")
+        self.assert_sql_equal("select level from node where id=5;", 2)
+        self.assert_sql_equal("select level from node where id=6;", 3)
+        self.cur.execute("commit");
+
+
 if __name__ == '__main__':
     unittest.main()
 
