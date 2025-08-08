@@ -26,8 +26,6 @@ update customer set name'Jack Doe' where id=1; -- the trigger is called on updat
 select last_modified from customer where id=1; -- returns the timestamp of the update statement
 ```
 
-Under the hood, pg_reactive_toolbox creates one or more triggers.
-
 Arguments:
 ```sql
 PROCEDURE REVDATE_create (id TEXT, table_name TEXT, column_name TEXT)
@@ -48,8 +46,16 @@ call REVDATE_disable('customer', 'last_modified');
 
 To drop the trigger:
 ```sql
-call REVDATE_disable('customer', 'last_modified');
+call REVDATE_drop('customer', 'last_modified');
 ```
+
+## COUNTLNK : Update a column that counts the number of linked elements
+
+TODO
+
+## AGG : Create an aggregation function (count + min or max) for rows in a table, with optional GROUP BY
+
+TODO
 
 # Roadmap
 Functions to implement :
@@ -57,6 +63,7 @@ Functions to implement :
 |-------------|--------------|-------------|
 | `TREELEVEL` | TODO         | Update a "level" column in a table representing a tree structure. |
 | `TREEPATH`  | TODO         | Update a "path" column in a table representing a tree structure.<br>Arguments: table name, name of the column representing the path elements, delimiter string (e.g., `/`). |
+| `TREECLOSURE`| TODO        | Update a closure table representing all ancestor-descendant pairs for each node.
 | `COUNTLNK`  | DONE         | Update a column that counts the number of linked elements.<br>Arguments: base table, base table PK, base table FK, foreign table, foreign table parent ID column, name of the count column in the base table. |
 | `REVDATE`   | DONE         | Update a column with the last modification date of the row (+ username retrieved from session context). |
 | `CREDATE`   | TODO         | Same as above, but for the creation date of the row. |
@@ -76,5 +83,5 @@ Functions to implement :
 | XXX_enable(id, [arg]) | Enable the triggers (triggers are enabled by default) |
 | XXX_disable(id, [args]) | Disable the triggers while keeping them in the database structure. |
 | XXX_drop(id) | Drop (delete) the triggers. |
-| XXX_refresh_{id} | Full refresh of the data. Useful after the triggers were disabled the re-enabled, to re-sync the data. |
+| XXX_refresh(id) | Full refresh of the data. Useful after the triggers were disabled the re-enabled, to re-sync the data. |
 
