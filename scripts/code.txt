@@ -1,0 +1,42 @@
+		CREATE OR REPLACE FUNCTION AGG_trgfun_%I() --id
+		RETURNS TRIGGER AS $inner_trg$
+			DECLARE
+				id_of_min_val %I.%I%%TYPE; -- table_name, pk
+				id_of_max_val %I.%I%%TYPE; -- table_name, pk
+			BEGIN
+				IF TG_OP='INSERT' then
+			    	insert into %I(%s, min_value, id_of_min, max_value, id_of_max, row_count) --agg_table, group_by_columns_joined
+					values(%s, NEW.%I, NEW.%I, NEW.%I, NEW.%I, 1) --group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
+					on conflict(%s) do update set -- group_by_columns_joined
+						min_value = least(%I.min_value, NEW.%I), --agg_table, aggregate_column
+						id_of_min=case when NEW.%I < %I.min_value then NEW.%I else %I.id_of_min END, --aggregate_column, agg_table, pk, agg_table
+						max_value=GREATEST(%I.max_value, NEW.%I), --agg_table, aggregate_column
+						id_of_max=case when  NEW.%I > %I.max_value then NEW.%I else %I.id_of_max END, --aggregate_column, agg_table, pk, agg_table
+						row_count=%I.row_count+1; -- agg_table
+				ELSIF TG_OP='DELETE' then
+					select id_of_min, id_of_max
+					into id_of_min_val, id_of_max_val
+					from %I --agg_table
+					where %s; -- where_condition_on_group_by
+
+					update %I set row_count=row_count-1 -- agg_table
+					where %s; -- where_condition_on_group_by
+
+					if id_of_min_val = OLD.%I then -- pk
+						update %I set -- agg_table
+							min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+							id_of_min = (select %I from %I where %s order by %I asc limit 1) --pk, table_name, where_condition_on_group_by, aggregate_column
+						where %s; -- where_condition_on_group_by
+					end if;
+					if id_of_max_val = OLD.%I then -- pk
+						update %I set -- agg_table
+							max_value = (select max(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+							id_of_max = (select %I from %I where %s order by %I desc limit 1) --pk, table_name, where_condition_on_group_by, aggregate_column
+						where %s; -- where_condition_on_group_by
+					end if;
+				-- ELSIF TG_OP = 'UPDATE' then
+				END IF;
+				RETURN NEW;
+			END;
+			$inner_trg$ LANGUAGE plpgsql;
+		$fun$,

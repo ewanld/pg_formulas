@@ -298,14 +298,14 @@ BEGIN
 
 					if id_of_min_val = OLD.%I then -- pk
 						update %I set -- agg_table
-							min_value = (select min(%I) from %I where %s), -- aggregate_column, agg_table, where_condition_on_group_by
-							id_of_min = (select %I from %I where %s order by %I asc limit 1) --pk, agg_table, where_condition_on_group_by, aggregate_column
+							min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+							id_of_min = (select %I from %I where %s order by %I asc limit 1) --pk, table_name, where_condition_on_group_by, aggregate_column
 						where %s; -- where_condition_on_group_by
 					end if;
 					if id_of_max_val = OLD.%I then -- pk
 						update %I set -- agg_table
-							max_value = (select max(%I) from %I where %s), -- aggregate_column, agg_table, where_condition_on_group_by
-							id_of_max = (select %I from %I where %s order by %I desc limit 1) --pk, agg_table, where_condition_on_group_by, aggregate_column
+							max_value = (select max(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
+							id_of_max = (select %I from %I where %s order by %I desc limit 1) --pk, table_name, where_condition_on_group_by, aggregate_column
 						where %s; -- where_condition_on_group_by
 					end if;
 				-- ELSIF TG_OP = 'UPDATE' then
@@ -313,8 +313,8 @@ BEGIN
 				RETURN NEW;
 			END;
 			$inner_trg$ LANGUAGE plpgsql;
-		$fun$,
-		id
+		$fun$
+		, id
 		, table_name, pk
 		, table_name, pk
 		, agg_table, group_by_columns_joined
@@ -331,14 +331,15 @@ BEGIN
 		, where_condition_on_group_by
 		, pk
 		, agg_table
-		, aggregate_column, agg_table, where_condition_on_group_by
-		, pk, agg_table, where_condition_on_group_by, aggregate_column
+		, aggregate_column, table_name, where_condition_on_group_by
+		, pk, table_name, where_condition_on_group_by, aggregate_column
 		, where_condition_on_group_by
 		, pk
 		, agg_table
-		, aggregate_column, agg_table, where_condition_on_group_by
-		, pk, agg_table, where_condition_on_group_by, aggregate_column
+		, aggregate_column, table_name, where_condition_on_group_by
+		, pk, table_name, where_condition_on_group_by, aggregate_column
 		, where_condition_on_group_by
+
 	);
 
     execute format($trg$
