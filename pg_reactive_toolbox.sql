@@ -592,8 +592,54 @@ BEGIN
     );
     EXECUTE sql;
 
+	execute format($inner_proc$
+		CREATE OR REPLACE PROCEDURE TREELEVEL_refresh_%I() -- id
+		LANGUAGE plpgsql AS $inner_proc2$
+		DECLARE
+			sql TEXT;
+		BEGIN
+			-- Full refresh: update all levels in the table
+			sql := format($f$
+				WITH RECURSIVE node_levels AS (
+				SELECT
+					%I, -- pk_column
+					%I, -- parent_column
+					0 AS level
+				FROM %I -- table_name
+				WHERE %I is null -- parent_column
+				UNION ALL
+				SELECT
+					n.%I, -- pk_column
+					n.%I, -- parent_column
+					nl.level + 1 as level
+				FROM %I n -- table_name
+				JOIN node_levels nl ON n.%I = nl.%I -- parent_column, pk_column
+				)
+				UPDATE %I -- table_name
+				SET %I = node_levels.level -- level_column
+				FROM node_levels
+				WHERE %I.%I = node_levels.%I --table_name, pk_column, pk_column
+			$f$
+			);
+			EXECUTE sql;
+		END;
+		$inner_proc2$
+	$inner_proc$
+	, id
+	, pk_column
+	, parent_column
+	, table_name
+	, parent_column
+	, pk_column
+	, parent_column
+	, table_name
+	, parent_column, pk_column
+	, table_name
+	, level_column
+	, table_name, pk_column, pk_column
+	);
     -- Full refresh: update all levels in the table
-	-- TODO
+	call TREELEVEL_refresh(id);
 
 END;
 $proc$;
@@ -643,50 +689,10 @@ END;
 $proc$;
 
 CREATE OR REPLACE PROCEDURE TREELEVEL_refresh(
-    id TEXT,
-    table_name TEXT,
-    pk_column TEXT,
-    parent_column TEXT,
-    level_column TEXT
+    id TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
-    sql TEXT;
 BEGIN
-    -- Full refresh: update all levels in the table
-    sql := format($f$
-        WITH RECURSIVE tree AS (
-            SELECT
-                {pk} AS id, -- pk_column
-                {parent} AS parent_id, -- parent_column
-                0 AS lvl
-            FROM {tbl} -- table_name
-            WHERE {parent} IS NULL -- parent_column
-            UNION ALL
-            SELECT
-                c.{pk}, -- pk_column
-                c.{parent}, -- parent_column
-                t.lvl + 1
-            FROM {tbl} c  -- table_name
-            JOIN tree t ON c.{parent} = t.id -- parent_column
-        )
-        UPDATE {tbl} AS t -- table_name
-        SET {lvlcol} = tree.lvl -- level_column
-        FROM tree
-        WHERE t.{pk} = tree.id; -- pk_column
-    $f$
-    , pk_column
-	, parent_column
-	, table_name
-	, parent_column
-	, pk_column
-	, parent_column
-	, table_name
-	, parent_column
-	, table_name
-	, level_column
-	, pk_column
-	);
-
-    EXECUTE sql;
+	execute format('call TREELEVEL_refresh_%I();', id);
 END;
 $proc$;

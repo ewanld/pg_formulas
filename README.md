@@ -68,7 +68,7 @@ Functions to implement :
 | `REVDATE`   | DONE         | Update a column with the last modification date of the row (+ username retrieved from session context). |
 | `CREDATE`   | TODO         | Same as above, but for the creation date of the row. |
 | `AUDIT`     | TODO         | Populate a history (audit) table. |
-| `AGG`       | IN_PROGRESS  | Create an aggregation function (count + min + max) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)<br>Arguments: table name, group by column. |
+| `AGG`       | DONE  | Create an aggregation function (count + min + max) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)<br>Arguments: table name, group by columns. |
 | `SUM`       | TODO         | Create an aggregation function (sum) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column. |
 | `TOPN`      | TODO         | Retrieve the top N min/max values from a table.<br>Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max). |
 | `UNION`     | TODO         | Merge multiple tables into one (useful for Hibernate inheritance scenarios for instance). |
