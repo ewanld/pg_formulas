@@ -347,7 +347,7 @@ BEGIN
 				ELSIF TG_OP = 'UPDATE' then
 					/* Only update if group by columns changed */
 					/* compare each group by column between OLD and NEW */
-					IF (NOT %s) THEN -- where_condition_on_group_by_OLDNEW
+					IF NOT (%s) THEN -- where_condition_on_group_by_OLDNEW
 						/* Decrement row_count and update min/max for OLD group */
 						select id_of_min, id_of_max
 						into id_of_min_val, id_of_max_val
@@ -381,6 +381,7 @@ BEGIN
 							row_count=%I.row_count+1; -- agg_table
 					/* If group by columns did not change, only update min/max if aggregate_column changed */
 					ELSIF OLD.%I <> NEW.%I THEN -- aggregate_column, aggregate_column
+						/*insert into logs values('diff amount');*/
 						update %I set -- agg_table
 							min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
 							id_of_min = (select %I from %I where %s order by %I asc limit 1), -- pk, table_name, where_condition_on_group_by, aggregate_column

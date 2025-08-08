@@ -34,6 +34,7 @@ class TestModule(unittest.TestCase):
         
 
     def tearDown(self):
+        self.cur.execute("commit;")
         self.cur.close()  # Close cursor
         self.conn.close()  # Close the connection
     
@@ -65,16 +66,14 @@ class TestModule(unittest.TestCase):
         # test 2: check that disable works
         self.cur.execute(f"call REVDATE_disable('{func_id}', 'customer')")
         self.cur.execute("insert into customer(name) values('Cust3')")
-        self.cur.execute("select * from customer where name='Cust3';")
-        record = self.cur.fetchone()
+        record = self.fetch_one("select * from customer where name='Cust3';")
         last_modified = record["last_modified"]
         self.assertIsNone(last_modified)
 
         # test 3: check that enable+update works
         self.cur.execute(f"call REVDATE_enable('{func_id}', 'customer')")
         self.cur.execute("update customer set name='Cust4' where name='Cust3'")
-        self.cur.execute("select * from customer where name='Cust4';")
-        record = self.cur.fetchone()
+        record = self.fetch_one("select * from customer where name='Cust4';")
         last_modified = record["last_modified"]
         self.assertTrue(datetime.now() - last_modified < timedelta(seconds=10));
 
@@ -141,6 +140,10 @@ class TestModule(unittest.TestCase):
         # self.cur.execute("drop table if exists invoice cascade;");
         # self.cur.execute("drop table if exists customer cascade;");
 
+    def fetch_one(self, sql):
+        self.cur.execute(sql)
+        return self.cur.fetchone()
+
     def testAGG(self):
         func_id = 'customer_invoices_agg'
 
@@ -149,8 +152,6 @@ class TestModule(unittest.TestCase):
         self.cur.execute(f"drop table if exists agg cascade;");
 
         self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
-
-        
 
         self.cur.execute(f"call AGG_create('{func_id}', 'invoice', 'id', 'amount', ARRAY['customer_id', 'country'], 'agg');")
 
@@ -161,16 +162,14 @@ class TestModule(unittest.TestCase):
         "(3, 'invoice 3', 2, 'FR', 2.2)," \
         "(4, 'invoice 4', 2, 'FR', 3.3)" \
         ";")
-        self.cur.execute(f"select * from agg where customer_id=1 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=1 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('5.50'))
         self.assertEqual(record['id_of_min'], 1)
         self.assertEqual(record['max_value'], Decimal('5.50'))
         self.assertEqual(record['id_of_max'], 1)
         self.assertEqual(record['row_count'], 1)
 
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('2.20'))
         self.assertEqual(record['id_of_min'], 3)
         self.assertEqual(record['max_value'], Decimal('3.30'))
@@ -180,8 +179,7 @@ class TestModule(unittest.TestCase):
         # test : insert invoice with new grouping key
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
         "(5, 'invoice 5', 3, 'FR', 5.5);")
-        self.cur.execute(f"select * from agg where customer_id=3 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=3 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('5.50'))
         self.assertEqual(record['id_of_min'], 5)
         self.assertEqual(record['max_value'], Decimal('5.50'))
@@ -191,8 +189,7 @@ class TestModule(unittest.TestCase):
         # test : insert invoice with existing grouping key, amount is min
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
         "(6, 'invoice 6', 2, 'FR', 1.1);")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('3.30'))
@@ -202,8 +199,7 @@ class TestModule(unittest.TestCase):
         # test : insert invoice with existing grouping key, amount is max
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
         "(7, 'invoice 7', 2, 'FR', 7.7);")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('7.70'))
@@ -213,8 +209,7 @@ class TestModule(unittest.TestCase):
         # test : insert invoice with existing grouping key, amount is inbetween (neither min nor max)
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
         "(8, 'invoice 8', 2, 'FR', 5.5);")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('7.70'))
@@ -223,8 +218,7 @@ class TestModule(unittest.TestCase):
 
         # test : delete invoice, amount is inbetween (neither min nor max)
         self.cur.execute("delete from invoice where id=8")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('7.70'))
@@ -234,16 +228,14 @@ class TestModule(unittest.TestCase):
         # test : delete invoice, amount is min amount
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
         "(8, 'invoice 8', 2, 'FR', 1.0);")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.00'))
         self.assertEqual(record['id_of_min'], 8)
         self.assertEqual(record['max_value'], Decimal('7.70'))
         self.assertEqual(record['id_of_max'], 7)
         self.assertEqual(record['row_count'], 5)
         self.cur.execute("delete from invoice where id=8")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('7.70'))
@@ -253,16 +245,14 @@ class TestModule(unittest.TestCase):
         # test : delete invoice, amount is max amount
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values" \
         "(9, 'invoice 9', 2, 'FR', 9.9);")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('9.90'))
         self.assertEqual(record['id_of_max'], 9)
         self.assertEqual(record['row_count'], 5)
         self.cur.execute("delete from invoice where id=9")
-        self.cur.execute(f"select * from agg where customer_id=2 and country='FR'")
-        record = self.cur.fetchone()
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
         self.assertEqual(record['min_value'], Decimal('1.10'))
         self.assertEqual(record['id_of_min'], 6)
         self.assertEqual(record['max_value'], Decimal('7.70'))
@@ -279,10 +269,16 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['row_count'], 4)
 
         # test : update invoice amount, invoice is min amount
+        self.cur.execute("update invoice set amount=0.9 where id=4")
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
+        self.assertEqual(record['min_value'], Decimal('0.90'))
+        self.assertEqual(record['id_of_min'], 4)
+        self.assertEqual(record['max_value'], Decimal('7.70'))
+        self.assertEqual(record['id_of_max'], 7)
+        self.assertEqual(record['row_count'], 4)
 
         self.cur.execute("commit;")
 
-        
 
     def testTREELEVEL(self):
         self.cur.execute("drop table if exists node cascade;");
