@@ -444,28 +444,46 @@ BEGIN
 		AS $body$
 			begin
 			    delete from %I; -- agg_table
-				insert into %I(%s,row_count, min_value, max_value, id_of_min, id_of_max) -- agg_table, group_by_columns_joined
-				select %s, -- group_by_columns_joined
-					count(*) as row_count,
-					min(%I) as min_value, -- aggregate_column
-					max(%I) as max_value, -- aggregate_column,
-					(SELECT %I FROM %I WHERE %s ORDER BY %I ASC LIMIT 1) AS id_of_min, -- pk, table_name, where_condition_on_group_by_qual, aggregate_column
-					(SELECT %I FROM %I WHERE %s ORDER BY %I DESC LIMIT 1) AS id_of_max -- pk, table_name, where_condition_on_group_by_qual, aggregate_column
-				from %I -- table_name
-				group by %s; -- group_by_columns_joined
+
+				WITH t_ranked AS (
+				SELECT
+					%s, -- group_by_columns_joined
+					%I, -- pk
+					%I, -- aggregate_column
+					ROW_NUMBER() OVER (PARTITION BY %s ORDER BY %I ASC) AS rn_min, -- group_by_columns_joined, aggregate_column
+					ROW_NUMBER() OVER (PARTITION BY %s ORDER BY %I DESC) AS rn_max, -- group_by_columns_joined, aggregate_column
+					COUNT(*)  OVER (PARTITION BY %s) AS row_count -- group_by_columns_joined
+				FROM %I -- table_name
+				)
+				insert into %I -- agg_table
+				SELECT
+				%s, -- group_by_columns_joined
+				MIN(CASE WHEN rn_min = 1 THEN %I END) AS min_value, -- aggregate_column
+				MIN(CASE WHEN rn_min = 1 THEN %I END) AS id_of_min, -- pk
+				MAX(CASE WHEN rn_max = 1 THEN %I END) AS max_value, -- aggregate_column
+				MAX(CASE WHEN rn_max = 1 THEN %I END) AS id_of_max, -- pk
+				MIN(row_count) as row_count
+				FROM t_ranked
+				GROUP BY %s; -- group_by_columns_joined
 			end;
 			$body$;
-		$inner_proc$,
-		id,
-		agg_table,
-		agg_table, group_by_columns_joined,
-		group_by_columns_joined,
-		aggregate_column,
-		aggregate_column,
-		pk, table_name, where_condition_on_group_by_qual, aggregate_column,
-		pk, table_name, where_condition_on_group_by_qual, aggregate_column,
-		table_name,
-		group_by_columns_joined
+		$inner_proc$
+		, id
+		, agg_table
+		, group_by_columns_joined
+		, pk
+		, aggregate_column
+		, group_by_columns_joined, aggregate_column
+		, group_by_columns_joined, aggregate_column
+		, group_by_columns_joined
+		, table_name
+		, agg_table
+		, group_by_columns_joined
+		, aggregate_column
+		, pk
+		, aggregate_column
+		, pk
+		, group_by_columns_joined
 	);
 
 	execute format('call AGG_refresh_%I()', id);

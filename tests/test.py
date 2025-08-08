@@ -91,12 +91,10 @@ class TestModule(unittest.TestCase):
         func_id = 'customer_invoices_count'
 
         self.cur.execute(f"call COUNTLNK_create('{func_id}', 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');")
-        self.cur.execute("commit;")
 
         # test 1 : insert invoices
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
-        self.cur.execute("commit;")
 
         self.assert_sql_equal("select invoice_count from customer where id=1;", 2)
         self.assert_sql_equal("select invoice_count from customer where id=2;", 1)
@@ -277,7 +275,38 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['id_of_max'], 7)
         self.assertEqual(record['row_count'], 4)
 
-        self.cur.execute("commit;")
+        # test : update invoice amount, invoice is max amount
+        self.cur.execute("update invoice set amount=8.8 where id=4")
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
+        self.assertEqual(record['min_value'], Decimal('1.10'))
+        self.assertEqual(record['id_of_min'], 6)
+        self.assertEqual(record['max_value'], Decimal('8.80'))
+        self.assertEqual(record['id_of_max'], 4)
+        self.assertEqual(record['row_count'], 4)
+
+        # test : update invoice amount, amount goes back from max to min
+        self.cur.execute("update invoice set amount=0.9 where id=4")
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
+        self.assertEqual(record['min_value'], Decimal('0.90'))
+        self.assertEqual(record['id_of_min'], 4)
+        self.assertEqual(record['max_value'], Decimal('7.70'))
+        self.assertEqual(record['id_of_max'], 7)
+        self.assertEqual(record['row_count'], 4)
+
+        # test : update invoice group by column
+        self.cur.execute("update invoice set country='US' where id=4")
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='FR'")
+        self.assertEqual(record['min_value'], Decimal('1.10'))
+        self.assertEqual(record['id_of_min'], 6)
+        self.assertEqual(record['max_value'], Decimal('7.70'))
+        self.assertEqual(record['id_of_max'], 7)
+        self.assertEqual(record['row_count'], 3)
+        record = self.fetch_one(f"select * from agg where customer_id=2 and country='US'")
+        self.assertEqual(record['min_value'], Decimal('0.90'))
+        self.assertEqual(record['id_of_min'], 4)
+        self.assertEqual(record['max_value'], Decimal('0.90'))
+        self.assertEqual(record['id_of_max'], 4)
+        self.assertEqual(record['row_count'], 1)
 
 
     def testTREELEVEL(self):
