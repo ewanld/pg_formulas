@@ -163,7 +163,7 @@ This will :
 
 * Create the triggers to synchronize changes from the ```vehicle``` table to the ```bike``` and ```car``` tables;
 
-> **NB**: to synchronize changes from ```bike``` and ```car``` to vehicles instead, use the argument 'SUB_TO_BASE'.
+> **NB**: to synchronize changes from ```bike``` and ```car``` to ```vehicle``` instead, use the argument 'SUB_TO_BASE'.
 
 # Roadmap
 Functions to implement :
