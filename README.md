@@ -81,7 +81,7 @@ PROCEDURE UNION_create (
 | sync_direction | Allowed values: 'BASE_TO_SUB' to propagate changes unidirectionally from the base table to the sub-tables ; 'BASE_TO_SUB' to propagate changes unidirectionally from the sub-tables table to the base table. 
 
 Example:
-Given the following two tables Bike and Car, we would like to synchronize data to a Vehicle table cointaining data from both tables:
+Given the following two tables ```bike``` and ```car```, we would like to synchronize data to a ```vehicle``` table cointaining data from both tables:
 
 <table>
     <thead>
@@ -127,6 +127,14 @@ Given the following two tables Bike and Car, we would like to synchronize data t
     </tbody>
 </table>
 
+From a Postgresql shell execute :
+```sql
+call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB'); -- create the trigger
+```
+
+This will :
+* Create the ```vehicle``` table containing columns from both ```bike``` and ```car``` tables, plus a discriminator column (named ```discriminator``` by default).
+
 <table>
     <thead>
         <tr>
@@ -153,13 +161,6 @@ Given the following two tables Bike and Car, we would like to synchronize data t
     </tbody>
 </table>
 
-From a Postgresql shell execute :
-```sql
-call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB'); -- create the trigger
-```
-
-This will :
-* Create the ```vehicle``` table containing columns from both ```bike``` and ```car``` tables, plus a discriminator column (named ```discriminator``` by default).
 * Create the triggers to synchronize changes from the ```vehicle``` table to the ```bike``` and ```car``` tables;
 
 > **NB**: to synchronize changes from ```bike``` and ```car``` to vehicles instead, use the argument 'SUB_TO_BASE'.
