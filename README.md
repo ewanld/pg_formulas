@@ -6,7 +6,7 @@ Postgresql toolbox to make the data more reactive ⚡ using triggers.
 # Usage
 Load the script in your database:
 ```bash
-psql -U username -d database_name -f pg_reactive_toolbox.sql
+psql -U username -d database_name -f pg_reactive_toolbox--1.0.sql
 ```
 
 ## REVDATE : Update a column with the last modification date of the row
