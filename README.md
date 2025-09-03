@@ -26,7 +26,7 @@ update customer set name'Jack Doe' where id=1; -- the trigger is called on updat
 select last_modified from customer where id=1; -- returns the timestamp of the update statement
 ```
 
-Arguments:
+Syntax:
 ```sql
 PROCEDURE REVDATE_create (id TEXT, table_name TEXT, column_name TEXT)
 ```
@@ -57,6 +57,31 @@ TODO
 
 TODO
 
+
+## UNION : Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.
+
+Syntax:
+```sql
+PROCEDURE UNION_create (
+    id TEXT,
+    base_table_name TEXT,
+    discriminator_column TEXT DEFAULT 'discriminator',
+    sub_tables TEXT[]
+    sync_direction TEXT DEFAULT 'BASE_TO_SUB'
+)
+
+```
+| Argument         | Description |
+|-------------|------ |
+| id | Id to identify this particular UNION trigger function.
+| base_table_name | Name of the base (union) table. This table is created automatically on function call.
+| discriminator_column | Name of the discriminator column, i.e the column from the base table that helps distinguish from which sub-table the row is from. (Optional. Default value : 'discriminator').
+| sub_tables | Name of tables to be kept in sync with the base table.
+| discriminator_values | Name of the discriminator values for each of the sub tables. The length of the array should be the same as the length of the ```sub_tables``` array, and the items should be in the same order. (Optional ; if not set, the discriminator values are the sub-table names).
+| sync_direction | Allowed values: 'BASE_TO_SUB' to propagate changes unidirectionally from the base table to the sub-tables ; 'BASE_TO_SUB' to propagate changes unidirectionally from the sub-tables table to the base table. 
+
+TODO
+
 # Roadmap
 Functions to implement :
 | Tag         | Status       | Description |
@@ -71,7 +96,7 @@ Functions to implement :
 | `AGG`       | DONE  | Create an aggregation function (count + min + max) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)<br>Arguments: table name, group by columns. |
 | `SUM`       | TODO         | Create an aggregation function (sum) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column. |
 | `TOPN`      | TODO         | Retrieve the top N min/max values from a table.<br>Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max). |
-| `UNION`     | TODO         | Merge multiple tables into one (useful for Hibernate inheritance scenarios for instance). |
+| `UNION`     | TODO         | Merge multiple tables into one (useful for Hibernate inheritance scenarios for instance). Synchronization between the base (union) table an sub-tables is unidirectional but can go any way (changes to base table are propagated to sub-tables, or changes to sub-tables are propagated to base table). Arguments: id, base_table_name, discriminator_column, discriminator_values, sub_tables, sync_direction.|
 | `INTERSECT` | TODO         | Compute the intersection of multiple tables into one. |
 | `JOIN`      | TODO         | In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table to avoid using a join in queries. |
 | `JSON`      | TODO         | Extract contents of a JSON column and set the results in other table columns.

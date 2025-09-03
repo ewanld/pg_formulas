@@ -349,6 +349,127 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select level from node where id=6;", 3)
         self.cur.execute("commit");
 
+    def testUNION_BASE_TO_SUB(self):
+        # set up
+        self.cur.execute("drop table if exists bike cascade;");
+        self.cur.execute("drop table if exists car cascade;");
+        self.cur.execute("drop table if exists vehicle cascade;");
+        self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
+        self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
+        self.cur.execute("call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB')");
+
+        # test : insert bike
+        bike_id = 1
+        self.cur.execute("insert into vehicle(discriminator, id, common_attribute1, bike_attribute1, car_attribute1) values('bike', {bike_id}, 'commonval1', 'bikeval1', null)")
+        self.assert_sql_equal("select count(*) from bike;", 1)
+        self.assert_sql_equal("select count(*) from car;", 0)
+        record = self.fetch_one(f"select * from bike where id={bike_id}}")
+        self.assertEqual(record['id'], bike_id)
+        self.assertEqual(record['common_attribute1'], 'commonval1')
+        self.assertEqual(record['bike_attribute1'], 'bikeval1')
+        
+        # test : insert car
+        car_id = 2
+        self.cur.execute("insert into vehicle(discriminator, id, common_attribute1, bike_attribute1, car_attribute1) values('car', {car_id}, 'commonval2', null, 2.0)")
+        self.assert_sql_equal("select count(*) from bike;", 1)
+        self.assert_sql_equal("select count(*) from car;", 1)
+        record = self.fetch_one(f"select * from car where id={car_id}")
+        self.assertEqual(record['id'], car_id)
+        self.assertEqual(record['common_attribute1'], 'commonval2')
+        self.assertEqual(record['car_attribute1'], 2.0)
+
+        # test : update bike attribute bike_attribute1
+        self.cur.execute(f"update vehicle set bike_attribute1='val2' where id={bike_id}")
+        self.assert_sql_equal(f"select bike_attribute1 from bike where id={bike_id}", 'val2')
+
+        # test : update bike attribute common_attribute1
+        self.cur.execute("update vehicle set common_attribute1='commonval3' where id={bike_id}")
+        self.assert_sql_equal(f"select common_attribute1 from bike where id={bike_id}", 'commonval3')
+
+        # test : update car attribute car_attribute1
+        self.cur.execute("update vehicle set car_attribute1=3.0 where id={car_id}")
+        self.assert_sql_equal("select car_attribute1 from car where id={car_id}", Decimal(3.0))
+
+        # test : update car attribute common_attribute1
+        self.cur.execute(f"update vehicle set common_attribute1='commonval4' where id={car_id}")
+        self.assert_sql_equal(f"select common_attribute1 from car where id={car_id}", 'commonval4')
+
+        # test : delete bike
+        self.cur.execute(f"delete from vehicle where id={bike_id}")
+        self.assert_sql_equal("select count(*) from bike;", 0)
+        self.assert_sql_equal("select count(*) from car;", 1)
+        
+        # test : delete car
+        self.cur.execute(f"delete from vehicle where id={car_id}")
+        self.assert_sql_equal("select count(*) from bike;", 0)
+        self.assert_sql_equal("select count(*) from car;", 0)
+
+        self.cur.execute("commit");
+
+    def testUNION_SUB_TO_BASE(self):
+        # set up
+        self.cur.execute("drop table if exists bike cascade;");
+        self.cur.execute("drop table if exists car cascade;");
+        self.cur.execute("drop table if exists vehicle cascade;");
+        self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
+        self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
+        self.cur.execute("call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')");
+
+        # test : insert bike
+        bike_id = 1
+        self.cur.execute(f"insert into bike(id, common_attribute1, bike_attribute1) values({bike_id}, 'commonval1', 'bikeval1')")
+        self.assert_sql_equal("select count(*) from vehicle;", 1)
+        self.assert_sql_equal("select count(*) from bike;", 1)
+        self.assert_sql_equal("select count(*) from car;", 0)
+        record = self.fetch_one("select * from vehicle where id={bike_id}")
+        self.assertEqual(record['id'], bike_id)
+        self.assertEqual(record['discriminator'], 'bike')
+        self.assertEqual(record['common_attribute1'], 'commonval1')
+        self.assertEqual(record['bike_attribute1'], 'bikeval1')
+        self.assertEqual(record['car_attribute1'], None)
+
+        # test : insert car
+        car_id = 2
+        self.cur.execute(f"insert into car(id, common_attribute1, car_attribute1) values({car_id}, 'commonval2', 2.0)")
+        self.assert_sql_equal("select count(*) from vehicle;", 2)
+        self.assert_sql_equal("select count(*) from bike;", 1)
+        self.assert_sql_equal("select count(*) from car;", 1)
+        record = self.fetch_one(f"select * from vehicle where id={car_id}}")
+        self.assertEqual(record['id'], car_id)
+        self.assertEqual(record['discriminator'], 'car')
+        self.assertEqual(record['common_attribute1'], 'commonval2')
+        self.assertEqual(record['bike_attribute1'], None)
+        self.assertEqual(record['car_attribute1'], Decimal(2.0))
+
+        # test : update bike attribute bike_attribute1
+        self.cur.execute(f"update bike set bike_attribute1='val2' where id={bike_id}")
+        self.assert_sql_equal(f"select bike_attribute1 from vehicle where id={bike_id}", 'val2')
+
+        # test : update bike attribute common_attribute1
+        self.cur.execute("update bike set common_attribute1='commonval3' where id={bike_id}")
+        self.assert_sql_equal(f"select common_attribute1 from vehicle where id={bike_id}", 'commonval3')
+
+        # test : update car attribute car_attribute1
+        self.cur.execute("update car set car_attribute1=3.0 where id={car_id}")
+        self.assert_sql_equal("select car_attribute1 from vehicle where id={car_id}", Decimal(3.0))
+
+        # test : update car attribute common_attribute1
+        self.cur.execute(f"update car set common_attribute1='commonval4' where id={car_id}")
+        self.assert_sql_equal(f"select common_attribute1 from vehicle where id={car_id}", 'commonval4')
+
+        # test : delete bike
+        self.cur.execute(f"delete from bike where id={bike_id}")
+        self.assert_sql_equal("select count(*) from vehicle;", 1)
+        self.assert_sql_equal("select count(*) from bike;", 0)
+        self.assert_sql_equal("select count(*) from car;", 1)
+        
+        # test : delete car
+        self.cur.execute(f"delete from car where id={car_id}")
+        self.assert_sql_equal("select count(*) from vehicle;", 0)
+        self.assert_sql_equal("select count(*) from bike;", 0)
+        self.assert_sql_equal("select count(*) from car;", 0)
+
+        self.cur.execute("commit");
 
 if __name__ == '__main__':
     unittest.main()

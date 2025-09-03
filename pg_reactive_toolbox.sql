@@ -577,7 +577,7 @@ BEGIN
 	, level_column
 	, table_name, pk_column, pk_column
 	, pk_column, pk_column
-    );
+	);
     EXECUTE sql;
 
     -- Drop existing trigger if exists
@@ -694,5 +694,202 @@ CREATE OR REPLACE PROCEDURE TREELEVEL_refresh(
 DECLARE
 BEGIN
 	execute format('call TREELEVEL_refresh_%I();', id);
+END;
+$proc$;
+
+--------------------------------------------------------------------------------
+-- UNION
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE UNION_create(
+    id TEXT,
+    base_table_name TEXT,
+    sub_tables TEXT[],
+    sync_direction TEXT DEFAULT 'BASE_TO_SUB',
+	discriminator_column TEXT DEFAULT 'discriminator',
+	discriminator_values TEXT[] DEFAULT NULL
+)
+LANGUAGE plpgsql
+AS $proc$
+DECLARE
+    i INT;
+    all_columns TEXT[];
+    col_name TEXT;
+    col_type TEXT;
+    col_defs TEXT := '';
+    cols_union TEXT := '';
+    sub_cols TEXT[];
+    sub_col_names TEXT;
+    insert_cols TEXT;
+    select_expr TEXT;
+BEGIN
+	IF discriminator_values is null then
+		discriminator_values := sub_tables;
+	end if;
+
+    -- 1. Gather all columns from all sub-tables (excluding duplicates)
+    col_defs := format('%I TEXT', discriminator_column);
+    FOR col_name, col_type IN
+		select column_name, data_type from (
+			SELECT DISTINCT on (column_name) column_name, data_type, ordinal_position
+			FROM information_schema.columns
+			WHERE table_name = ANY(sub_tables)
+			AND column_name <> discriminator_column
+		) t order by ordinal_position
+	LOOP
+        col_defs := col_defs || format(', %I %s', col_name, col_type);
+		all_columns := all_columns || col_name;
+    END LOOP;
+
+    -- 2. Create union table with all columns
+    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (%s);', base_table_name, col_defs);
+
+    -- 3. Initial full refresh: copy all sub-tables into base table
+    FOR i IN 1..array_length(sub_tables, 1) LOOP
+        -- Get columns for this sub-table
+        sub_cols := ARRAY[]::TEXT[];
+        sub_col_names := '';
+        FOR col_name IN
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = sub_tables[i]
+              AND column_name <> discriminator_column
+        LOOP
+            sub_cols := array_append(sub_cols, col_name);
+        END LOOP;
+
+        -- Build insert column list for union table
+        insert_cols := '';
+        select_expr := '';
+        FOR col_name IN SELECT unnest(all_columns) LOOP
+            insert_cols := insert_cols || format('%I, ', col_name);
+            IF col_name = ANY(sub_cols) THEN
+                select_expr := select_expr || format('%I, ', col_name);
+            ELSE
+                select_expr := select_expr || 'NULL, ';
+            END IF;
+        END LOOP;
+        insert_cols := insert_cols || format('%I', discriminator_column);
+        select_expr := select_expr || format('%L', discriminator_values[i]);
+
+        -- Insert data from sub-table
+        EXECUTE format(
+            'INSERT INTO %I (%s) SELECT %s FROM %I;',
+            base_table_name, insert_cols, select_expr, sub_tables[i]
+        );
+    END LOOP;
+
+    -- 4. Create triggers for sync_direction
+    IF sync_direction = 'SUB_TO_BASE' THEN
+        -- Propagate changes from sub-tables to base table
+        FOR i IN 1..array_length(sub_tables, 1) LOOP
+            -- Get columns for this sub-table
+            sub_cols := ARRAY[]::TEXT[];
+            FOR col_name IN
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = sub_tables[i]
+                  AND column_name <> discriminator_column
+            LOOP
+                sub_cols := array_append(sub_cols, col_name);
+            END LOOP;
+
+            -- Build insert column list and select expr for NEW row
+            insert_cols := '';
+            select_expr := '';
+            FOR col_name IN SELECT unnest(all_columns) LOOP
+                insert_cols := insert_cols || format('%I, ', col_name);
+                IF col_name = ANY(sub_cols) THEN
+                    select_expr := select_expr || format('NEW.%I, ', col_name);
+                ELSE
+                    select_expr := select_expr || 'NULL, ';
+                END IF;
+            END LOOP;
+            insert_cols := insert_cols || format('%I', discriminator_column);
+            select_expr := select_expr || format('%L', discriminator_values[i]);
+
+            EXECUTE format($f$
+                CREATE OR REPLACE FUNCTION UNION_sub_to_base_trgfun_%s_%s() -- id, sub_tables[i]
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    IF TG_OP = 'INSERT' THEN
+                        INSERT INTO %I (%s) VALUES (%s); -- base_table_name, insert_cols, select_expr
+                    ELSIF TG_OP = 'UPDATE' THEN
+                        UPDATE %I SET (%s) = (%s) -- base_table_name, insert_cols, select_expr
+                        WHERE id = NEW.id AND %I = %L; -- discriminator_column, discriminator_values[i]
+                    ELSIF TG_OP = 'DELETE' THEN
+                        DELETE FROM %I WHERE id = OLD.id AND %I = %L; -- base_table_name, discriminator_column, discriminator_values[i]
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            $f$, id, sub_tables[i], base_table_name, insert_cols, select_expr,
+                base_table_name, insert_cols, select_expr,
+				discriminator_column, discriminator_values[i],
+                base_table_name, discriminator_column, discriminator_values[i]);
+
+            EXECUTE format($t$
+                CREATE TRIGGER UNION_sub_to_base_trg_%s_%s
+                AFTER INSERT OR UPDATE OR DELETE ON %I
+                FOR EACH ROW EXECUTE PROCEDURE UNION_sub_to_base_trgfun_%s_%s();
+            $t$, id, sub_tables[i], sub_tables[i], id, sub_tables[i]);
+        END LOOP;
+    ELSE
+        -- Propagate changes from base table to sub-tables
+        FOR i IN 1..array_length(sub_tables, 1) LOOP
+            -- Get columns for this sub-table
+            sub_cols := ARRAY[]::TEXT[];
+            FOR col_name IN
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = sub_tables[i]
+                  AND column_name <> discriminator_column
+            LOOP
+                sub_cols := array_append(sub_cols, col_name);
+            END LOOP;
+
+            -- Build insert column list and select expr for NEW row
+            insert_cols := '';
+            select_expr := '';
+            FOR col_name IN SELECT unnest(sub_cols) LOOP
+                insert_cols := insert_cols || format('%I, ', col_name);
+                select_expr := select_expr || format('NEW.%I, ', col_name);
+            END LOOP;
+            -- Remove trailing comma
+            IF length(insert_cols) > 0 THEN
+                insert_cols := left(insert_cols, length(insert_cols)-2);
+                select_expr := left(select_expr, length(select_expr)-2);
+            END IF;
+
+            EXECUTE format($f$
+                CREATE OR REPLACE FUNCTION UNION_base_to_sub_trgfun_%s_%s() -- id, sub_tables[i]
+                RETURNS TRIGGER AS $$
+                BEGIN
+					IF TG_OP = 'INSERT' AND NEW.%I = %L THEN -- discriminator_column, discriminator_values[i]
+						INSERT INTO %I (%s) VALUES (%s); -- sub_tables[i], insert_cols, select_expr
+					ELSIF TG_OP = 'UPDATE' AND NEW.%I = %L THEN -- -- discriminator_column, discriminator_values[i]
+						UPDATE %I SET (%s) = (%s) WHERE id = NEW.id; -- sub_tables[i], insert_cols, select_expr
+					ELSIF TG_OP = 'DELETE' AND OLD.%I = %L THEN -- -- discriminator_column, discriminator_values[i]
+						DELETE FROM %I WHERE id = OLD.id; -- sub_tables[i]
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            $f$
+				, id, sub_tables[i]
+				, discriminator_column, discriminator_values[i]
+				, sub_tables[i], insert_cols, select_expr
+				, discriminator_column, discriminator_values[i]
+				, sub_tables[i], insert_cols, select_expr
+				, discriminator_column, discriminator_values[i]
+				, sub_tables[i]
+			);
+
+            EXECUTE format($t$
+                CREATE TRIGGER UNION_base_to_sub_trg_%s_%s
+                AFTER INSERT OR UPDATE OR DELETE ON %I
+                FOR EACH ROW EXECUTE PROCEDURE UNION_base_to_sub_trgfun_%s_%s();
+            $t$, id, sub_tables[i], base_table_name, id, sub_tables[i]);
+        END LOOP;
+    END IF;
 END;
 $proc$;
