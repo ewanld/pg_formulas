@@ -81,7 +81,7 @@ PROCEDURE UNION_create (
 | sync_direction | Allowed values: 'BASE_TO_SUB' to propagate changes unidirectionally from the base table to the sub-tables ; 'BASE_TO_SUB' to propagate changes unidirectionally from the sub-tables table to the base table. 
 
 Example:
-Given the following two tables:
+Given the following two tables Bike and Car, we would like to synchronize data to a Vehicle table cointaining data from both tables:
 
 <table>
     <thead>
@@ -90,7 +90,7 @@ Given the following two tables:
         </tr>
     </thead>
     <tbody>
-        <tr style="border-bottom: 1px solid black;">
+        <tr>
             <td><b>PK</b></td>
             <td><b>id</b></td>
         </tr>
@@ -105,9 +105,64 @@ Given the following two tables:
     </tbody>
 </table>
 
-| Tag         | Status       | Description |
+<table>
+    <thead>
+        <tr>
+            <th colspan="2">Car</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><b>PK</b></td>
+            <td><b>id</b></td>
+        </tr>
+        <tr>
+            <td/>
+            <td>common_atribute1</td>
+        </tr>
+        <tr>
+            <td/>
+            <td>car_atribute1</td>
+        </tr>
+    </tbody>
+</table>
 
-TODO
+<table>
+    <thead>
+        <tr>
+            <th colspan="2">Vehicle</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><b>PK</b></td>
+            <td><b>id</b></td>
+        </tr>
+        <tr>
+            <td/>
+            <td>common_atribute1</td>
+        </tr>
+        <tr>
+            <td/>
+            <td>bike_atribute1</td>
+        </tr>
+        <tr>
+            <td/>
+            <td>car_atribute1</td>
+        </tr>
+    </tbody>
+</table>
+
+From a Postgresql shell execute :
+```sql
+call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB'); -- create the trigger
+```
+
+This will :
+* Create the ```vehicle``` table containing columns from both ```bike``` and ```car``` tables, plus a discriminator column (named ```discriminator``` by default).
+* Create the triggers to synchronize changes from the ```vehicle``` table to the ```bike``` and ```car``` tables;
+
+> **NB**: to synchronize changes from ```bike``` and ```car``` to vehicles instead, use the argument 'SUB_TO_BASE'.
 
 # Roadmap
 Functions to implement :
