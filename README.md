@@ -80,6 +80,33 @@ PROCEDURE UNION_create (
 | discriminator_values | Name of the discriminator values for each of the sub tables. The length of the array should be the same as the length of the ```sub_tables``` array, and the items should be in the same order. (Optional ; if not set, the discriminator values are the sub-table names).
 | sync_direction | Allowed values: 'BASE_TO_SUB' to propagate changes unidirectionally from the base table to the sub-tables ; 'BASE_TO_SUB' to propagate changes unidirectionally from the sub-tables table to the base table. 
 
+Example:
+Given the following two tables:
+
+<table>
+    <thead>
+        <tr>
+            <th colspan="2">Bike</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr style="border-bottom: 1px solid black;">
+            <td><b>PK</b></td>
+            <td><b>id</b></td>
+        </tr>
+        <tr>
+            <td/>
+            <td>common_atribute1</td>
+        </tr>
+        <tr>
+            <td/>
+            <td>bike_atribute1</td>
+        </tr>
+    </tbody>
+</table>
+
+| Tag         | Status       | Description |
+
 TODO
 
 # Roadmap
