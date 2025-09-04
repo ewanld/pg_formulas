@@ -363,7 +363,7 @@ class TestModule(unittest.TestCase):
         self.cur.execute("insert into vehicle(discriminator, id, common_attribute1, bike_attribute1, car_attribute1) values('bike', {bike_id}, 'commonval1', 'bikeval1', null)")
         self.assert_sql_equal("select count(*) from bike;", 1)
         self.assert_sql_equal("select count(*) from car;", 0)
-        record = self.fetch_one(f"select * from bike where id={bike_id}}")
+        record = self.fetch_one(f"select * from bike where id={bike_id}")
         self.assertEqual(record['id'], bike_id)
         self.assertEqual(record['common_attribute1'], 'commonval1')
         self.assertEqual(record['bike_attribute1'], 'bikeval1')
