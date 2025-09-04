@@ -434,7 +434,7 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select count(*) from vehicle;", 2)
         self.assert_sql_equal("select count(*) from bike;", 1)
         self.assert_sql_equal("select count(*) from car;", 1)
-        record = self.fetch_one(f"select * from vehicle where id={car_id}}")
+        record = self.fetch_one(f"select * from vehicle where id={car_id}")
         self.assertEqual(record['id'], car_id)
         self.assertEqual(record['discriminator'], 'car')
         self.assertEqual(record['common_attribute1'], 'commonval2')
