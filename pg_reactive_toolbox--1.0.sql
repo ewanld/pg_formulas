@@ -6,8 +6,7 @@ CREATE or replace PROCEDURE pgrt_internal_insert_metadata (
 	id TEXT,
 	args JSONB
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 BEGIN
 	CREATE TABLE IF NOT EXISTS pgrt_metadata(id TEXT primary key, args JSONB);
 	insert into pgrt_metadata values(id, args);
@@ -17,8 +16,7 @@ $proc$;
 CREATE or replace PROCEDURE pgrt_internal_delete_metadata (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 BEGIN
 	delete from pgrt_metadata where id = pgrt_internal_delete_metadata.id;
 END;
@@ -29,8 +27,7 @@ CREATE or replace FUNCTION pgrt_internal_get_metadata (
 	id TEXT
 )
 RETURNS JSONB
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 DECLARE
 	res JSONB;
 BEGIN
@@ -48,8 +45,7 @@ CREATE or replace PROCEDURE REVDATE_create (
     table_name TEXT,
     column_name TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 BEGIN
 	call pgrt_internal_insert_metadata(id, jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
@@ -81,8 +77,7 @@ $proc$;
 CREATE or replace PROCEDURE REVDATE_enable (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	table_name TEXT;
@@ -98,8 +93,7 @@ $proc$;
 CREATE or replace PROCEDURE REVDATE_disable (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	table_name TEXT;
@@ -115,8 +109,7 @@ $proc$;
 CREATE or replace PROCEDURE REVDATE_drop (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	table_name TEXT;
@@ -138,8 +131,7 @@ $proc$;
 CREATE or replace PROCEDURE REVDATE_refresh (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 begin
 	-- no op
 end;
@@ -156,8 +148,7 @@ CREATE or replace PROCEDURE COUNTLNK_create (
     linked_table_name TEXT,
     linked_fk TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 BEGIN
 	call pgrt_internal_insert_metadata(id, jsonb_build_object(
 		'base_table_name', base_table_name,
@@ -248,8 +239,7 @@ $proc$;
 CREATE or replace PROCEDURE COUNTLNK_refresh (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 begin
 	execute format('call "COUNTLNK_refresh_%I"();', id);
 end;
@@ -258,8 +248,7 @@ $proc$;
 CREATE or replace PROCEDURE COUNTLNK_enable (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	table_name TEXT;
@@ -277,8 +266,7 @@ $proc$;
 CREATE or replace PROCEDURE COUNTLNK_disable (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	table_name TEXT;
@@ -294,8 +282,7 @@ $proc$;
 CREATE or replace PROCEDURE COUNTLNK_drop (
 	id TEXT
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	table_name TEXT;
@@ -321,8 +308,7 @@ CREATE or replace PROCEDURE AGG_create (
     group_by_column TEXT[] default '{}',
     agg_table TEXT default null
 )
-LANGUAGE plpgsql
-AS $proc$
+LANGUAGE plpgsql AS $proc$
 DECLARE
 	str TEXT := ''; -- string buffer
 	c TEXT; -- loop index
@@ -335,10 +321,18 @@ DECLARE
 	where_condition_on_group_by_qual TEXT := ''; -- SQL fragment : "grp1 = table_name.grp1 AND grp2 = table_name.grp2..."
 BEGIN
 
-	-- set aggregate table name
+	-- set default values for optional arguments
 	IF agg_table is NULL then
 		agg_table := 'agg_' || id;
 	END IF;
+
+	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+		'table_name', table_name,
+		'pk', pk,
+		'aggregate_column', aggregate_column,
+		'group_by_column', group_by_column,
+		'agg_table', agg_table
+	));
 
 	-- create array of quoted 'group by' column names
 	group_by_column_quoted := group_by_column;
@@ -600,7 +594,47 @@ BEGIN
 		, group_by_columns_joined
 	);
 
-	execute format('call AGG_refresh_%I()', id);
+	call AGG_refresh(id);
+END;
+$proc$;
+
+create or replace procedure agg_refresh(
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+BEGIN
+	execute format('call agg_refresh_%I();', id);
+END;
+$proc$;
+
+create or replace procedure agg_enable(
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+	table_name TEXT;
+	args JSONB;
+BEGIN
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>base_table_name;
+
+	execute format('alter table %I enable trigger AGG_trg_%i;', table_name, id);
+	call agg_refresh(id);
+END;
+$proc$;
+
+create or replace procedure agg_disable(
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+	table_name TEXT;
+	args JSONB;
+BEGIN
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>base_table_name;
+	
+	execute format('alter table %I disable trigger AGG_trg_%i;', table_name, id);
 END;
 $proc$;
 
