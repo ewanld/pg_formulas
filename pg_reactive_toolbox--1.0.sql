@@ -116,13 +116,10 @@ declare
 begin
 	args := pgrt_internal_get_metadata(id);
 	table_name := args->>'table_name';
-	execute format($$
-		DROP TRIGGER "REVDATE_trg_%I" ON %I;
-		$$, id, table_name);
 
-	execute format($$
-		DROP function "REVDATE_trgfun_%I";
-		$$, id);
+	execute format('DROP TRIGGER IF EXISTS "REVDATE_trg_%I" ON %I;', id, table_name);
+	execute format('DROP function if exists "REVDATE_trgfun_%I";', id);
+
 	call pgrt_internal_delete_metadata(id);
 end;
 $proc$;
@@ -290,8 +287,8 @@ begin
 	args := pgrt_internal_get_metadata(id);
 	table_name := args->>'table_name';
 	
-	execute format('drop trigger COUNTLNK_trg_%I on %i', id, table_name);
-	execute format('drop procedure COUNTLNK_refresh_%I', id);
+	execute format('drop trigger if exists COUNTLNK_trg_%I on %i', id, table_name);
+	execute format('drop procedure if exists COUNTLNK_refresh_%I', id);
 
 	call pgrt_internal_delete_metadata(id);
 end;
@@ -638,6 +635,21 @@ BEGIN
 END;
 $proc$;
 
+create or replace procedure agg_drop(
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+	table_name TEXT;
+	args JSONB;
+BEGIN
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>base_table_name;
+
+	execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
+	call agg_refresh(id);
+END;
+$proc$;
 
 --------------------------------------------------------------------------------
 -- TREELEVEL
@@ -827,12 +839,10 @@ CREATE OR REPLACE PROCEDURE TREELEVEL_drop(
 DECLARE
     trg_func_name TEXT := format('treelevel_func_%s', id);
     trg_name TEXT := format('treelevel_trg_%s', id);
-    sql TEXT;
 BEGIN
-    sql := format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
-    EXECUTE sql;
-    sql := format('DROP FUNCTION IF EXISTS %I();', trg_func_name);
-    EXECUTE sql;
+    execute format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
+    execute format('DROP FUNCTION IF EXISTS %I();', trg_func_name);
+	call pgrt_internal_delete_metadata(id);
 END;
 $proc$;
 
@@ -1146,6 +1156,7 @@ BEGIN
 			execute format('drop function if exists UNION_base_to_sub_trgfun_%s_%s; ', id, base_table_name);
 		END LOOP;
 	END IF;
+	call pgrt_internal_delete_metadata(id);
 END;
 $proc$;
 
