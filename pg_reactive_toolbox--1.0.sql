@@ -615,6 +615,7 @@ BEGIN
 	args := pgrt_internal_get_metadata(id);
 	table_name := args->>base_table_name;
 
+	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('alter table %I enable trigger AGG_trg_%i;', table_name, id);
 	call agg_refresh(id);
 END;
@@ -817,7 +818,9 @@ DECLARE
     trg_name TEXT := format('treelevel_trg_%s', id);
     sql TEXT;
 BEGIN
-    execute format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
+	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+	execute format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
+	call treelevel_refresh(id);
 END;
 $proc$;
 
@@ -1093,13 +1096,18 @@ BEGIN
 
 	IF sync_direction = 'SUB_TO_BASE' THEN
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', sub_tables[i]); -- allow reads but not writes
+		END LOOP;
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
 			execute format('alter table %I enable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
 		END LOOP;
 	ELSE
+		execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', base_table_name); -- allow reads but not writes
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
 			execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
 		END LOOP;
 	END IF;
+	call union_refresh(id);
 END;
 $proc$;
 
