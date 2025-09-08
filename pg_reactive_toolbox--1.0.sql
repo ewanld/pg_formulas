@@ -673,6 +673,13 @@ DECLARE
     trg_name TEXT := format('treelevel_trg_%s', id);
     sql TEXT;
 BEGIN
+	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+		'table_name', table_name,
+		'pk_column', pk_column,
+		'parent_column', parent_column,
+		'level_column', level_column
+	));
+
     -- Create the trigger function
     sql := format($f$
         CREATE OR REPLACE FUNCTION %I() -- trg_func_name
