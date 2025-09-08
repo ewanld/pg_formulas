@@ -147,8 +147,8 @@ class PerfTestModule(unittest.TestCase):
         page_size = 100
 
         self.measure_perf_UNION_insert_single_run(row_count, True, sync_direction, page_size)
-        duration_in_ms = self.measure_avg_duration(lambda: self.measure_perf_UNION_update_single_run(sync_direction, 100)
-        print(f"Run UNION_update with sync_direction={sync_direction} page_size={page_size}. Overhead={overhead}% Average duration:  {duration_in_ms} ms vs ref {duration_in_ms_ref} ms ")                                         
+        duration_in_ms = self.measure_avg_duration(lambda: self.measure_perf_UNION_update_single_run(sync_direction, 100))
+        # print(f"Run UNION_update with sync_direction={sync_direction} page_size={page_size}. Overhead={overhead}% Average duration:  {duration_in_ms} ms vs ref {duration_in_ms_ref} ms ")                                         
         
     
     def measure_perf_UNION_update_single_run(self, sync_direction: SyncDirection, row_count_to_update):
