@@ -671,7 +671,6 @@ CREATE OR REPLACE PROCEDURE TREELEVEL_create(
 DECLARE
     trg_func_name TEXT := format('treelevel_func_%s', id);
     trg_name TEXT := format('treelevel_trg_%s', id);
-    sql TEXT;
 BEGIN
 	call pgrt_internal_insert_metadata(id, jsonb_build_object(
 		'table_name', table_name,
@@ -681,7 +680,7 @@ BEGIN
 	));
 
     -- Create the trigger function
-    sql := format($f$
+    execute format($f$
         CREATE OR REPLACE FUNCTION %I() -- trg_func_name
         RETURNS TRIGGER AS $$
         DECLARE
@@ -745,28 +744,26 @@ BEGIN
 	, table_name, pk_column, pk_column
 	, pk_column, pk_column
 	);
-    EXECUTE sql;
 
     -- Drop existing trigger if exists
-    sql := format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
-    EXECUTE sql;
+    execute format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
 
     -- Create the trigger
-    sql := format(
-        'CREATE TRIGGER %I BEFORE INSERT OR UPDATE OF %I ON %I
-         FOR EACH ROW EXECUTE FUNCTION %I();',
-        trg_name, parent_column, table_name, trg_func_name
+    execute format($trg$
+        CREATE TRIGGER %I BEFORE INSERT OR UPDATE OF %I ON %I -- trg_name, parent_column, table_name
+         FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
+		 $trg$
+		 ,
+        trg_name, parent_column, table_name,
+		trg_func_name
     );
-    EXECUTE sql;
 
 	execute format($inner_proc$
 		CREATE OR REPLACE PROCEDURE TREELEVEL_refresh_%I() -- id
 		LANGUAGE plpgsql AS $inner_proc2$
-		DECLARE
-			sql TEXT;
 		BEGIN
 			-- Full refresh: update all levels in the table
-			sql := format($f$
+			execute format($f$
 				WITH RECURSIVE node_levels AS (
 				SELECT
 					%I, -- pk_column
@@ -788,7 +785,6 @@ BEGIN
 				WHERE %I.%I = node_levels.%I --table_name, pk_column, pk_column
 			$f$
 			);
-			EXECUTE sql;
 		END;
 		$inner_proc2$
 	$inner_proc$
@@ -821,8 +817,7 @@ DECLARE
     trg_name TEXT := format('treelevel_trg_%s', id);
     sql TEXT;
 BEGIN
-    sql := format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
-    EXECUTE sql;
+    execute format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
 END;
 $proc$;
 
@@ -832,10 +827,8 @@ CREATE OR REPLACE PROCEDURE TREELEVEL_disable(
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
     trg_name TEXT := format('treelevel_trg_%s', id);
-    sql TEXT;
 BEGIN
-    sql := format('ALTER TABLE %I DISABLE TRIGGER %I;', table_name, trg_name);
-    EXECUTE sql;
+    execute format('ALTER TABLE %I DISABLE TRIGGER %I;', table_name, trg_name);
 END;
 $proc$;
 
