@@ -1,4 +1,46 @@
 --------------------------------------------------------------------------------
+-- INTERNAL/UTILITY FUNCTIONS
+--------------------------------------------------------------------------------
+-- Insert a row inot the metadata table. args is a JSON object containing procedure arguments.
+CREATE or replace PROCEDURE pgrt_internal_insert_metadata (
+	id TEXT,
+	args JSONB
+)
+LANGUAGE plpgsql
+AS $proc$
+BEGIN
+	CREATE TABLE IF NOT EXISTS pgrt_metadata(id TEXT primary key, args JSONB);
+	insert into pgrt_metadata values(id, args);
+END;
+$proc$;
+
+CREATE or replace PROCEDURE pgrt_internal_delete_metadata (
+	id TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+BEGIN
+	delete from pgrt_metadata where id = pgrt_internal_delete_metadata.id;
+END;
+$proc$;
+
+-- Get a row inot the metadata table. args is a JSON object containing procedure arguments.
+CREATE or replace FUNCTION pgrt_internal_get_metadata (
+	id TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $proc$
+DECLARE
+	res JSONB;
+BEGIN
+	CREATE TABLE IF NOT EXISTS pgrt_metadata(id TEXT primary key, args JSONB);
+	select args INTO res from pgrt_metadata where id = pgrt_internal_get_metadata.id;
+	return res;
+END;
+$proc$;
+
+-------------------------------------------------------------------------------
 -- REVDATE
 --------------------------------------------------------------------------------
 CREATE or replace PROCEDURE REVDATE_create (
@@ -9,6 +51,7 @@ CREATE or replace PROCEDURE REVDATE_create (
 LANGUAGE plpgsql
 AS $proc$
 BEGIN
+	call pgrt_internal_insert_metadata(id, jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
 		CREATE OR REPLACE FUNCTION "REVDATE_trgfun_%I"()
 		RETURNS TRIGGER AS $inner_trg$
@@ -36,12 +79,16 @@ $proc$;
 
 
 CREATE or replace PROCEDURE REVDATE_enable (
-	id TEXT,
-    table_name TEXT
+	id TEXT
 )
 LANGUAGE plpgsql
 AS $proc$
+declare
+	args JSONB;
+	table_name TEXT;
 begin
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>'table_name';
 	execute format($$
 		ALTER TABLE %I enable TRIGGER "REVDATE_trg_%I";
 		$$, table_name, id);
@@ -49,12 +96,16 @@ end;
 $proc$;
 
 CREATE or replace PROCEDURE REVDATE_disable (
-	id TEXT,
-    table_name TEXT
+	id TEXT
 )
 LANGUAGE plpgsql
 AS $proc$
+declare
+	args JSONB;
+	table_name TEXT;
 begin
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>'table_name';
 	execute format($$
 		ALTER TABLE %I disable TRIGGER "REVDATE_trg_%I";
 		$$, table_name, id);
@@ -62,14 +113,16 @@ end;
 $proc$;
 
 CREATE or replace PROCEDURE REVDATE_drop (
-	id TEXT,
-    table_name TEXT
+	id TEXT
 )
 LANGUAGE plpgsql
 AS $proc$
 declare
-	my_sql_state TEXT;
+	args JSONB;
+	table_name TEXT;
 begin
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>'table_name';
 	execute format($$
 		DROP TRIGGER "REVDATE_trg_%I" ON %I;
 		$$, id, table_name);
@@ -77,6 +130,7 @@ begin
 	execute format($$
 		DROP function "REVDATE_trgfun_%I";
 		$$, id);
+	call pgrt_internal_delete_metadata(id);
 end;
 $proc$;
 
@@ -87,9 +141,7 @@ CREATE or replace PROCEDURE REVDATE_refresh (
 LANGUAGE plpgsql
 AS $proc$
 begin
-	execute format($$
-		call "REVDATE_refresh_%I"();
-		$$, id);
+	-- no op
 end;
 $proc$;
 
@@ -107,6 +159,14 @@ CREATE or replace PROCEDURE COUNTLNK_create (
 LANGUAGE plpgsql
 AS $proc$
 BEGIN
+	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+		'base_table_name', base_table_name,
+		'base_pk', base_pk,
+		'base_count_column', base_count_column,
+		'linked_table_name', linked_table_name,
+		'linked_fk', linked_fk
+	));
+
 	execute format($fun$
 		CREATE OR REPLACE FUNCTION "COUNTLNK_trgfun_%I"()
 		RETURNS TRIGGER AS $inner_trg$
@@ -179,7 +239,7 @@ BEGIN
 		id -- trigger function name
 	);
 
-	execute format('call "COUNTLNK_refresh_%I"()', id);
+	call COUNTLNK_refresh(id);
 
 END;
 $proc$;
@@ -191,9 +251,62 @@ CREATE or replace PROCEDURE COUNTLNK_refresh (
 LANGUAGE plpgsql
 AS $proc$
 begin
-	execute format($$
-		call "COUNTLNK_refresh_%I"();
-		$$, id);
+	execute format('call "COUNTLNK_refresh_%I"();', id);
+end;
+$proc$;
+
+CREATE or replace PROCEDURE COUNTLNK_enable (
+	id TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+declare
+	args JSONB;
+	table_name TEXT;
+begin
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>'table_name';
+	
+	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+	execute format('alter table %I enable trigger COUNTLNK_trg_%I', table_name, id);
+	execute format('alter table %I enable trigger COUNTLNK_trg_truncate_%I', table_name, id);
+	call COUNTLNK_refresh(id);
+end;
+$proc$;
+
+CREATE or replace PROCEDURE COUNTLNK_disable (
+	id TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+declare
+	args JSONB;
+	table_name TEXT;
+begin
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>'table_name';
+	
+	execute format('alter table %I disable trigger COUNTLNK_trg_%I', table_name, id);
+	execute format('alter table %I disable trigger COUNTLNK_trg_truncate_%I', table_name, id);
+end;
+$proc$;
+
+CREATE or replace PROCEDURE COUNTLNK_drop (
+	id TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+declare
+	args JSONB;
+	table_name TEXT;
+begin
+	args := pgrt_internal_get_metadata(id);
+	table_name := args->>'table_name';
+	
+	execute format('drop trigger COUNTLNK_trg_%I on %i', id, table_name);
+	execute format('drop procedure COUNTLNK_refresh_%I', id);
+
+	call pgrt_internal_delete_metadata(id);
 end;
 $proc$;
 
@@ -221,6 +334,7 @@ DECLARE
 	where_condition_on_group_by_OLDNEW TEXT := ''; -- SQL fragment : "OLD.grp1 = NEW.grp1 AND OLD.grp2 = NEW.grp2..."
 	where_condition_on_group_by_qual TEXT := ''; -- SQL fragment : "grp1 = table_name.grp1 AND grp2 = table_name.grp2..."
 BEGIN
+
 	-- set aggregate table name
 	IF agg_table is NULL then
 		agg_table := 'agg_' || id;
@@ -721,12 +835,21 @@ DECLARE
     sub_col_names TEXT;
     insert_cols TEXT;
     select_expr TEXT;
+	sql TEXT;
 BEGIN
 	IF discriminator_values is null then
 		discriminator_values := sub_tables;
 	end if;
 
-    -- 1. Gather all columns from all sub-tables (excluding duplicates)
+	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+		'base_table_name', base_table_name,
+		'sub_tables', sub_tables,
+		'sync_direction', sync_direction,
+		'discriminator_column', discriminator_column,
+		'discriminator_values', discriminator_values
+	));
+
+    -- Gather all columns from all sub-tables (excluding duplicates)
     col_defs := format('%I TEXT', discriminator_column);
     FOR col_name, col_type IN
 		select column_name, data_type from (
@@ -740,10 +863,11 @@ BEGIN
 		all_columns := all_columns || col_name;
     END LOOP;
 
-    -- 2. Create union table with all columns
+    -- Create union table with all columns
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (%s);', base_table_name, col_defs);
 
-    -- 3. Initial full refresh: copy all sub-tables into base table
+    -- create refresh procedure: copy all sub-tables into base table
+	sql := '';
     FOR i IN 1..array_length(sub_tables, 1) LOOP
         -- Get columns for this sub-table
         sub_cols := ARRAY[]::TEXT[];
@@ -772,13 +896,25 @@ BEGIN
         select_expr := select_expr || format('%L', discriminator_values[i]);
 
         -- Insert data from sub-table
-        EXECUTE format(
+        sql := sql || format(
             'INSERT INTO %I (%s) SELECT %s FROM %I;',
             base_table_name, insert_cols, select_expr, sub_tables[i]
         );
     END LOOP;
 
-    -- 4. Create triggers for sync_direction
+	execute format($inner_proc$
+		CREATE OR REPLACE PROCEDURE UNION_refresh_%I() -- id
+		LANGUAGE plpgsql AS $inner_proc2$
+		BEGIN
+			%s -- sql
+		END;
+		$inner_proc2$
+	$inner_proc$
+	, id
+	, sql
+	);
+
+    -- Create triggers for sync_direction
     IF sync_direction = 'SUB_TO_BASE' THEN
         -- Propagate changes from sub-tables to base table
         FOR i IN 1..array_length(sub_tables, 1) LOOP
@@ -891,5 +1027,99 @@ BEGIN
             $t$, id, sub_tables[i], base_table_name, id, sub_tables[i]);
         END LOOP;
     END IF;
+
+	call UNION_refresh(id);
+
+END;
+$proc$;
+
+CREATE OR REPLACE PROCEDURE UNION_enable(
+    id TEXT
+) LANGUAGE plpgsql AS $proc$
+DECLARE
+	base_table_name TEXT;
+    sub_tables TEXT[];
+    sync_direction TEXT DEFAULT 'BASE_TO_SUB';
+	args JSONB;
+BEGIN
+	args := pgrt_internal_get_metadata(id);
+	base_table_name := args->>base_table_name;
+	sub_tables := args->>sub_tables;
+	sync_direction := args->>sync_direction;
+
+	IF sync_direction = 'SUB_TO_BASE' THEN
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('alter table %I enable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
+		END LOOP;
+	ELSE
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
+		END LOOP;
+	END IF;
+END;
+$proc$;
+
+
+CREATE OR REPLACE PROCEDURE UNION_disable(
+    id TEXT
+) LANGUAGE plpgsql AS $proc$
+DECLARE
+	base_table_name TEXT;
+    sub_tables TEXT[];
+    sync_direction TEXT DEFAULT 'BASE_TO_SUB';
+	args JSONB;
+BEGIN
+	args := pgrt_internal_get_metadata(id);
+	base_table_name := args->>base_table_name;
+	sub_tables := args->>sub_tables;
+	sync_direction := args->>sync_direction;
+
+	IF sync_direction = 'SUB_TO_BASE' THEN
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('alter table %I disable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
+		END LOOP;
+	ELSE
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('alter table %I disable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
+		END LOOP;
+	END IF;
+END;
+$proc$;
+
+
+CREATE OR REPLACE PROCEDURE UNION_drop(
+    id TEXT
+) LANGUAGE plpgsql AS $proc$
+DECLARE
+	base_table_name TEXT;
+    sub_tables TEXT[];
+    sync_direction TEXT DEFAULT 'BASE_TO_SUB';
+	args JSONB;
+BEGIN
+	args := pgrt_internal_get_metadata(id);
+	base_table_name := args->>base_table_name;
+	sub_tables := args->>sub_tables;
+	sync_direction := args->>sync_direction;
+
+	IF sync_direction = 'SUB_TO_BASE' THEN
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('drop trigger if exists UNION_sub_to_base_trg_%s_%s on %I; ', id, sub_tables[i], sub_tables[i]);
+			execute format('drop function if exists UNION_sub_to_base_trgfun_%s_%s; ', id, sub_tables[i]);
+		END LOOP;
+	ELSE
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('drop trigger if exists UNION_base_to_sub_trg_%s_%s on %I; ', id, sub_tables[i], base_table_name);
+			execute format('drop function if exists UNION_base_to_sub_trgfun_%s_%s; ', id, base_table_name);
+		END LOOP;
+	END IF;
+END;
+$proc$;
+
+CREATE OR REPLACE PROCEDURE UNION_refresh(
+    id TEXT
+) LANGUAGE plpgsql AS $proc$
+DECLARE
+BEGIN
+	execute format('call UNION_refresh_%I();', id);
 END;
 $proc$;
