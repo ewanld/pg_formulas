@@ -18,7 +18,7 @@ CREATE or replace PROCEDURE pgrt_internal_delete_metadata (
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	delete from pgrt_metadata where id = pgrt_internal_delete_metadata.id;
+	delete from pgrt_metadata m where m.id = pgrt_internal_delete_metadata.id;
 END;
 $proc$;
 
@@ -32,10 +32,17 @@ DECLARE
 	res JSONB;
 BEGIN
 	CREATE TABLE IF NOT EXISTS pgrt_metadata(id TEXT primary key, args JSONB);
-	select args INTO res from pgrt_metadata where id = pgrt_internal_get_metadata.id;
+	select args INTO res from pgrt_metadata m where m.id = pgrt_internal_get_metadata.id;
 	return res;
 END;
 $proc$;
+
+
+CREATE OR REPLACE FUNCTION pgrt_internal_jsonb_to_text_array(j jsonb)
+RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
+    SELECT array_agg(value)
+    FROM jsonb_array_elements_text(j) AS t(value);
+$$;
 
 -------------------------------------------------------------------------------
 -- REVDATE
@@ -1091,7 +1098,7 @@ DECLARE
 BEGIN
 	args := pgrt_internal_get_metadata(id);
 	base_table_name := args->>base_table_name;
-	sub_tables := args->>sub_tables;
+	sub_tables := (args->>sub_tables)::text[];
 	sync_direction := args->>sync_direction;
 
 	IF sync_direction = 'SUB_TO_BASE' THEN
@@ -1123,7 +1130,7 @@ DECLARE
 BEGIN
 	args := pgrt_internal_get_metadata(id);
 	base_table_name := args->>base_table_name;
-	sub_tables := args->>sub_tables;
+	sub_tables := (args->>sub_tables)::text[];
 	sync_direction := args->>sync_direction;
 
 	IF sync_direction = 'SUB_TO_BASE' THEN
@@ -1149,9 +1156,11 @@ DECLARE
 	args JSONB;
 BEGIN
 	args := pgrt_internal_get_metadata(id);
-	base_table_name := args->>base_table_name;
-	sub_tables := args->>sub_tables;
-	sync_direction := args->>sync_direction;
+	base_table_name := args->>'base_table_name';
+	sub_tables := pgrt_internal_jsonb_to_text_array(args->'sub_tables');
+	insert into pgrt_metadata values('debug', jsonb_build_object('message', sub_tables));
+	commit;
+	sync_direction := args->>'sync_direction';
 
 	IF sync_direction = 'SUB_TO_BASE' THEN
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
