@@ -85,7 +85,7 @@ class PerfTestModule(unittest.TestCase):
         self.cur.execute("create table car(id int primary key, common_attribute1 TEXT, car_attribute1 DECIMAL)")
 
         if (enable_triggers):
-            self.cur.execute(f"call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], '{sync_direction}')");
+            self.cur.execute(f"call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], '{sync_direction}')")
         else:
             self.cur.execute(f"create table vehicle(id int primary key, discriminator TEXT, common_attribute1 TEXT, bike_attribute1 TEXT, car_attribute1 DECIMAL)")
         self.conn.commit()
@@ -136,11 +136,13 @@ class PerfTestModule(unittest.TestCase):
         self.conn.commit()
         end = time.perf_counter()
         
+        self.cur.execute(f"call UNION_drop('uvehicle')")
+        
         duration_in_ms = (end - start) * 1000
         #print(f"Execution time: {duration_in_ms} ms")
         return duration_in_ms
 
-    def test_perf_UNION_update(self, ):
+    def test_perf_UNION_update(self):
         # insert test data
         sync_direction: SyncDirection = 'SUB_TO_BASE'
         row_count = 1000
