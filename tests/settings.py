@@ -4,6 +4,6 @@ DATABASE = {
     "port": 5432,
     "name": "postgres",
     "user": "postgres",
-    "password": "XXXX",
+    "password": "root",
     "schema": "public",
 }
