@@ -26,7 +26,7 @@ class TestModule(unittest.TestCase):
         current_dir = Path(__file__).resolve().parent
 
         self.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
-        self.cur.execute('delete from pgrt_metadata;')
+        self.cur.execute('drop table if exists pgrt_metadata;')
 
     def execute_sql_file(self, sql_file):
         with open(sql_file, 'r') as file:
@@ -41,8 +41,8 @@ class TestModule(unittest.TestCase):
     
 
     # assert that the sql query returns a single row containing a single scalar equal to expected value.
-    def assert_sql_equal(self, sql, expected):
-        self.cur.execute(sql)
+    def assert_sql_equal(self, sql, expected, params=()):
+        self.cur.execute(sql, params)
         result = self.cur.fetchone()
         self.assertEqual(list(result.values())[0], expected)
 
@@ -469,6 +469,22 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select count(*) from vehicle;", 0)
         self.assert_sql_equal("select count(*) from bike;", 0)
         self.assert_sql_equal("select count(*) from car;", 0)
+
+        self.cur.execute("commit");
+
+    def testUNION_metadata(self):
+        self.cur.execute("drop table if exists bike cascade;");
+        self.cur.execute("drop table if exists car cascade;");
+        self.cur.execute("drop table if exists vehicle cascade;");
+        self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
+        self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
+
+        id = 'uvehicle_metadata';
+        self.cur.execute("call UNION_create(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
+        self.assert_sql_equal("select count(*) from pgrt_metadata m where m.id=%s;", 1, (id,))
+        #self.cur.execute("call UNION_drop(%s)", (id,));
+        #self.assert_sql_equal("select count(*) from pgrt_metadata m where m.id=%s;", 0, (id,))
+
 
         self.cur.execute("commit");
 
