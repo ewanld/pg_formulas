@@ -4,9 +4,13 @@
 
 Postgresql toolbox to make the data more reactive ⚡ using triggers.
 
-
-
 🚧 WORK IN PROGRESS 🚧
+
+* [Usage](#Usage)
+* [How does it work ?](#How-does-it-work-?)
+* [Functions summary](#functions-summary)
+* [Functions details](#functions-details)
+* [Function naming convention](#function-naming-convention)
 
 # Usage
 Load the script in your database:
