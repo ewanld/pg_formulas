@@ -15,7 +15,7 @@ psql -U username -d database_name -f pg_reactive_toolbox--1.0.sql
 ```
 
 # How does it work ?
-pg_reactive_toolbox is a set of postgresql procedures that make data react to changes, in the same way as Excel formulas can make cells reacts to other cell value changes. 
+pg_reactive_toolbox is a set of postgresql procedures that make data react to changes, in the same way as Excel formulas can make cells reacts to other cell value changes. Around ~20 procedures (types of "formulas") are implemented, responding to common data synchronization needs.
 
 # Functions summary
 **Aggregate functions**:
