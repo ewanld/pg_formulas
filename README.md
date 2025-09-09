@@ -14,7 +14,18 @@ Load the script in your database:
 psql -U username -d database_name -f pg_reactive_toolbox--1.0.sql
 ```
 
-## REVDATE : Update a column with the last modification date of the row
+# Functions summary
+* Audit functions
+  * [REVDATE](#REVDATE): Automatically update a 'last_modified' column.
+  * [CREDATE](#CREDATE): Automatically update a 'creation_date' column.
+
+* Merge, split, or join tables
+  * [UNION](#UNION): Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.
+
+# Functions details
+
+## REVDATE
+**Automatically update a 'last_modified' column.**
 
 Example table ```customer```. We want to update the ```last_modified``` column automatically when a row is modified.
 
@@ -54,6 +65,10 @@ To drop the trigger:
 call REVDATE_drop('customer', 'last_modified');
 ```
 
+## CREDATE
+**Automatically update a 'creation_date' column.**
+
+
 ## COUNTLNK : Update a column that counts the number of linked elements
 
 TODO
@@ -63,7 +78,8 @@ TODO
 TODO
 
 
-## UNION : Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.
+## UNION
+**Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.**
 
 Syntax:
 ```sql
