@@ -14,13 +14,28 @@ Load the script in your database:
 psql -U username -d database_name -f pg_reactive_toolbox--1.0.sql
 ```
 
+# How does it work ?
+pg_reactive_toolbox is a set of postgresql procedures that make data react to changes, in the same way as Excel formulas can make cells reacts to other cell value changes. 
+
 # Functions summary
 * Audit functions
   * [REVDATE](#REVDATE): Automatically update a 'last_modified' column.
   * [CREDATE](#CREDATE): Automatically update a 'creation_date' column.
+ * [AUDIT](#CREDATE): Populate a history (audit) table.
+
+* Aggregate data
+COUNTLNK
+AGG
+SUM
+COUNT
 
 * Merge, split, or join tables
   * [UNION](#UNION): Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.
+
+* Working with trees
+  * [TREELEVEL](#TREELEVEL): Update a "level" column in a table representing a tree structure.
+  * [TREEPATH](#TREEPATH): Update a "path" column in a table representing a tree structure.
+  * [TREECLOSURE](#TREECLOSURE): Update a closure table representing all ancestor-descendant pairs for each node.
 
 # Functions details
 
