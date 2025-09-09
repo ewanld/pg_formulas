@@ -18,24 +18,33 @@ psql -U username -d database_name -f pg_reactive_toolbox--1.0.sql
 pg_reactive_toolbox is a set of postgresql procedures that make data react to changes, in the same way as Excel formulas can make cells reacts to other cell value changes. 
 
 # Functions summary
-* Audit functions
+**Aggregate functions**:
+  * [COUNTLNK](#COUNTLNK) : Update a column that counts the number of linked elements.
+  * [AGG](#AGG): Create an aggregation function (min + max + id of min + id of max + row count) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)
+  * [SUM](#SUM): Create an aggregation function (sum + row count) for rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
+  * [COUNT](#COUNT): Count rows in a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
+  * [ARRAY_AGG_LINKED](#ARRAY_AGG_LINKED): Update a column that aggregates linked elements in an ARRAY, similar to the built-in ARRAY_AGG function.
+  * [STRING_AGG_LINKED](#STRING_AGG_LINKED): Update a column that joins linked elements in a string, similar to the built-in STRING_AGG function.
+  * [TOPN](#TOPN): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max). |
+
+**Merge, split, or join tables:**
+  * [INHERITANCE](#INHERITANCE): Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.
+  * [UNION](#UNION): Compute the union of multiple tables into one.
+  * [INTERSECT](#INTERSECT): Compute the intersection of multiple tables into one.
+  * [JOIN](#JOIN): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table to avoid using a join in queries.
+
+**Audit functions:**
   * [REVDATE](#REVDATE): Automatically update a 'last_modified' column.
   * [CREDATE](#CREDATE): Automatically update a 'creation_date' column.
- * [AUDIT](#CREDATE): Populate a history (audit) table.
-
-* Aggregate data
-COUNTLNK
-AGG
-SUM
-COUNT
-
-* Merge, split, or join tables
-  * [UNION](#UNION): Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.
-
-* Working with trees
+  * [AUDIT](#CREDATE): Populate a history (audit) table.
+ 
+**Working with trees:**
   * [TREELEVEL](#TREELEVEL): Update a "level" column in a table representing a tree structure.
   * [TREEPATH](#TREEPATH): Update a "path" column in a table representing a tree structure.
   * [TREECLOSURE](#TREECLOSURE): Update a closure table representing all ancestor-descendant pairs for each node.
+
+**Working with JSON:**
+  * [JSON](#JSON): Set the value of a JSONB field to be the contents of a table column.
 
 # Functions details
 
@@ -93,8 +102,9 @@ TODO
 TODO
 
 
-## UNION
+## INHERITANCE
 **Merge multiple tables into one, while keeping data in-sync between the union table and the sub-tables.**
+Synchronization between the base (union) table an sub-tables is unidirectional but can go any way (changes to the base table are propagated to sub-tables, or changes to sub-tables are propagated to the base table).
 
 Syntax:
 ```sql
