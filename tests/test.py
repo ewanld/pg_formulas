@@ -65,14 +65,14 @@ class TestModule(unittest.TestCase):
             self.assertTrue(datetime.now() - last_modified < timedelta(seconds=10));
         
         # test 2: check that disable works
-        self.cur.execute(f"call REVDATE_disable('{func_id}', 'customer')")
+        self.cur.execute(f"call REVDATE_disable(%s)", (func_id,))
         self.cur.execute("insert into customer(name) values('Cust3')")
         record = self.fetch_one("select * from customer where name='Cust3';")
         last_modified = record["last_modified"]
         self.assertIsNone(last_modified)
 
         # test 3: check that enable+update works
-        self.cur.execute(f"call REVDATE_enable('{func_id}', 'customer')")
+        self.cur.execute(f"call REVDATE_enable(%s)", (func_id,))
         self.cur.execute("update customer set name='Cust4' where name='Cust3'")
         record = self.fetch_one("select * from customer where name='Cust4';")
         last_modified = record["last_modified"]
@@ -91,7 +91,7 @@ class TestModule(unittest.TestCase):
 
         func_id = 'customer_invoices_count'
 
-        self.cur.execute(f"call COUNTLNK_create('{func_id}', 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');")
+        self.cur.execute(f"call COUNTLNK_create(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (func_id,))
 
         # test 1 : insert invoices
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
