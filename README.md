@@ -56,21 +56,21 @@ The ```customers_count``` table is created following the call to ```pgf_count_ta
 All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```customers``` table are **propagated automatically** to the ```customers_count``` table. The updates are **incremental**, i.e. do not require an expensive ```COUNT(*)``` computation on each change.
 
 # Formulas
+**Aggregate data into a single database field**
+* [SUM](#SUM) : Update a field that sums linked elements.
+* [COUNT](#COUNT) : Update a field that counts the number of linked elements.
+* [MIN](#MIN) : Update a field to represent the min value among linked elements.
+* [MAX](#MAX) : Update a field to represent the max value among linked elements.
+* [ID_OF_MIN](#ID_OF_MIN) : Update a field to represent the id of min value among linked elements.
+* [ID_OF_MAX](#ID_OF_MAX) : Update a field to represent the id of max value among linked elements.
+* [ARRAY_AGG](#ARRAY_AGG): Update a field that aggregates linked elements in an ARRAY, similar to the built-in ARRAY_AGG function. Arguments: limit(optional): limit the number of items in the ARRAY.
+* [STRING_AGG](#STRING_AGG): Update a field that joins linked elements in a string, similar to the built-in STRING_AGG function. Arguments: limit(optional): limit the number of items in the string.
+
 **Aggregate data into a dedicated table**:
   * [MINMAX_TABLE](#MINMAX_TABLE): Store min and max values from a table (along with the id of those rows), with optional GROUP BY. (If no GROUP BY is provided, it counts all rows.)
   * [SUM_TABLE](#SUM_TABLE): Sum rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
   * [COUNT_TABLE](#COUNT_TABLE): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
   * [TOPN_TABLE](#TOPN_TABLE): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max).
-
-**Aggregate data into a single column**
-* [SUM](#SUM) : Update a column that sums linked elements.
-* [COUNT](#COUNT) : Update a column that counts the number of linked elements.
-* [MIN](#MIN) : Update a column to represent the min value among linked elements.
-* [MAX](#MAX) : Update a column to represent the max value among linked elements.
-* [ID_OF_MIN](#ID_OF_MIN) : Update a column to represent the id of min value among linked elements.
-* [ID_OF_MAX](#ID_OF_MAX) : Update a column to represent the id of max value among linked elements.
-* [ARRAY_AGG](#ARRAY_AGG): Update a column that aggregates linked elements in an ARRAY, similar to the built-in ARRAY_AGG function. Arguments: limit(optional): limit the number of items in the ARRAY.
-* [STRING_AGG](#STRING_AGG): Update a column that joins linked elements in a string, similar to the built-in STRING_AGG function. Arguments: limit(optional): limit the number of items in the string.
 
 **Merge, split, or join tables:**
   * [INHERITANCE_TABLE](#INHERITANCE_TABLE): Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables.
