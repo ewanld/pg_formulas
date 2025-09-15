@@ -50,7 +50,7 @@ class TestModule(unittest.TestCase):
         result = self.cur.fetchone()
         self.assertEqual(list(result.values())[0], expected)
 
-    def testREVDATE(self):
+    def test_revdate(self):
         self.cur.execute("drop table if exists customer cascade;");
         self.cur.execute("create table customer (id SERIAL PRIMARY KEY, name text, last_modified timestamp default null);");
 
@@ -86,7 +86,7 @@ class TestModule(unittest.TestCase):
         self.conn.commit()
 
     # data model: customer -1-N-> invoice
-    def testCOUNTLNK(self):
+    def test_count(self):
         self.cur.execute("drop table if exists invoice cascade;");
         self.cur.execute("drop table if exists customer cascade;");
 
@@ -147,7 +147,7 @@ class TestModule(unittest.TestCase):
         self.cur.execute(sql)
         return self.cur.fetchone()
 
-    def testAGG(self):
+    def test_minmax_table(self):
         func_id = 'customer_invoices_agg'
 
         self.cur.execute("drop table if exists customer cascade;");
@@ -314,7 +314,7 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['row_count'], 1)
 
 
-    def testTREELEVEL(self):
+    def test_treelevel(self):
         self.cur.execute("drop table if exists node cascade;");
         self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
 
@@ -354,7 +354,7 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select level from node where id=6;", 3)
         self.cur.execute("commit");
 
-    def testUNION_BASE_TO_SUB(self):
+    def test_inheritance_table_BASE_TO_SUB(self):
         # set up
         self.cur.execute("drop table if exists bike cascade;");
         self.cur.execute("drop table if exists car cascade;");
@@ -411,7 +411,7 @@ class TestModule(unittest.TestCase):
 
         self.cur.execute("commit");
 
-    def testUNION_SUB_TO_BASE(self):
+    def test_inheritance_table_SUB_TO_BASE(self):
         # set up
         self.cur.execute("drop table if exists bike cascade;");
         self.cur.execute("drop table if exists car cascade;");
@@ -476,7 +476,7 @@ class TestModule(unittest.TestCase):
 
         self.cur.execute("commit");
 
-    def testUNION_metadata(self):
+    def test_inheritance_table_metadata(self):
         self.cur.execute("drop table if exists bike cascade;");
         self.cur.execute("drop table if exists car cascade;");
         self.cur.execute("drop table if exists vehicle cascade;");
