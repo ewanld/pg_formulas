@@ -22,7 +22,7 @@ BEGIN
 END;
 $proc$;
 
--- Get a row inot the metadata table. args is a JSON object containing procedure arguments.
+-- Get a row from the metadata table. args is a JSON object containing procedure arguments.
 CREATE or replace FUNCTION pgf_internal_get_metadata (
 	id TEXT
 )
