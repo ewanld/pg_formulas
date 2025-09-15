@@ -7,9 +7,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 class TestModule(unittest.TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
+        print("setup")
         # Connect to your postgres DB
-        self.conn = psycopg2.connect(
+        cls.conn = psycopg2.connect(
             host=settings.DATABASE["host"],
             port=settings.DATABASE["port"],
             dbname=settings.DATABASE["name"],
@@ -18,26 +20,28 @@ class TestModule(unittest.TestCase):
         )
 
         # Open a cursor to perform database operations
-        self.cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cls.cur = cls.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         schemaName = settings.DATABASE["schema"]
-        self.cur.execute(f'SET search_path TO {schemaName}')
+        cls.cur.execute(f'SET search_path TO {schemaName}')
         
         current_dir = Path(__file__).resolve().parent
 
-        self.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
-        self.cur.execute('drop table if exists pgf_metadata;')
+        cls.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
+        cls.cur.execute('drop table if exists pgf_metadata;')
 
-    def execute_sql_file(self, sql_file):
+    @classmethod
+    def execute_sql_file(cls, sql_file):
         with open(sql_file, 'r') as file:
             sql_commands = file.read()
-        self.cur.execute(sql_commands)
+        cls.cur.execute(sql_commands)
         
 
-    def tearDown(self):
-        self.cur.execute("commit;")
-        self.cur.close()  # Close cursor
-        self.conn.close()  # Close the connection
+    @classmethod
+    def tearDownClass(cls):
+        cls.cur.execute("commit;")
+        cls.cur.close()  # Close cursor
+        cls.conn.close()  # Close the connection
     
 
     # assert that the sql query returns a single row containing a single scalar equal to expected value.
