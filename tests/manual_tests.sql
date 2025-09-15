@@ -14,7 +14,7 @@ select * from customer;
 select * from invoice;
 
 update customer set invoice_count=0;
-call COUNTLNK_refresh();
+call pgf_count_refresh();
 
 insert into invoice (name, customer_id) values('invoice 7', 2);
 update invoice set customer_id=1 where id in (15,16);
@@ -23,7 +23,7 @@ delete from invoice where id=12;
 truncate table invoice;
 
 
-call COUNTLNK_refresh(
+call pgf_count_refresh(
 	id := '1',
 	base_table_name := 'customer',
 	base_pk := 'id',
@@ -46,7 +46,7 @@ call linked_refresh_customer_invoice_count();
 drop table test_agg;
 create table test_agg(id serial primary key, status text, amount integer);
 drop table agg_a;
-call AGG_create(
+call pgf_minmax_table(
 	id := 'a',
 	table_name := 'test_agg',
     aggregate_column := 'amount',
@@ -72,7 +72,7 @@ select * from agg_a; -- expected: actif	0	2	2
 update test_agg set amount=1 where status='actif' and amount=0; 
 select * from agg_a; -- expected: actif	0	2	2
 
-call AGG_refresh_a;
+call pgf_minmax_table_refresh_a;
 
 
 select * from agg_a;

@@ -72,7 +72,7 @@ class TestModule(unittest.TestCase):
         self.assertIsNone(last_modified)
 
         # test 3: check that enable+update works
-        self.cur.execute(f"call REVDATE_enable(%s)", (func_id,))
+        self.cur.execute(f"call pgf_revdate_enable(%s)", (func_id,))
         self.cur.execute("update customer set name='Cust4' where name='Cust3'")
         record = self.fetch_one("select * from customer where name='Cust4';")
         last_modified = record["last_modified"]
@@ -91,7 +91,7 @@ class TestModule(unittest.TestCase):
 
         func_id = 'customer_invoices_count'
 
-        self.cur.execute(f"call COUNTLNK_create(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (func_id,))
+        self.cur.execute(f"call pgf_count(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (func_id,))
 
         # test 1 : insert invoices
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
@@ -107,7 +107,7 @@ class TestModule(unittest.TestCase):
 
         # test 3 : manual refresh
         self.cur.execute("update customer set invoice_count=0;")
-        self.cur.execute(f"call COUNTLNK_refresh('{func_id}');")
+        self.cur.execute(f"call pgf_count_refresh('{func_id}');")
         self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
         self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
 
@@ -152,7 +152,7 @@ class TestModule(unittest.TestCase):
 
         self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
 
-        self.cur.execute(f"call AGG_create('{func_id}', 'invoice', 'id', 'amount', ARRAY['customer_id', 'country'], 'agg');")
+        self.cur.execute(f"call pgf_minmax_table('{func_id}', 'invoice', 'id', 'amount', ARRAY['customer_id', 'country'], 'agg');")
 
         # test 1 : insert invoices
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values"
@@ -314,7 +314,7 @@ class TestModule(unittest.TestCase):
         self.cur.execute("drop table if exists node cascade;");
         self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
 
-        self.cur.execute("call TREELEVEL_create('treelevel', 'node', 'id', 'parent_id', 'level')")
+        self.cur.execute("call pgf_treelevel('treelevel', 'node', 'id', 'parent_id', 'level')")
         
         # test : insert root node
         self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")
@@ -357,7 +357,7 @@ class TestModule(unittest.TestCase):
         self.cur.execute("drop table if exists vehicle cascade;");
         self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
         self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
-        self.cur.execute("call UNION_create('uvehicle2', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB')");
+        self.cur.execute("call pgf_inheritance_table('uvehicle2', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB')");
 
         # test : insert bike
         bike_id = 1
@@ -414,7 +414,7 @@ class TestModule(unittest.TestCase):
         self.cur.execute("drop table if exists vehicle cascade;");
         self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
         self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
-        self.cur.execute("call UNION_create('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')");
+        self.cur.execute("call pgf_inheritance_table('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')");
 
         # test : insert bike
         bike_id = 1
@@ -480,9 +480,9 @@ class TestModule(unittest.TestCase):
         self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
 
         id = 'uvehicle_metadata';
-        self.cur.execute("call UNION_create(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
+        self.cur.execute("call pgf_inheritance_table(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
         self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
-        #self.cur.execute("call UNION_drop(%s)", (id,));
+        #self.cur.execute("call pgf_inheritance_table_drop(%s)", (id,));
         #self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
 
 

@@ -81,7 +81,7 @@ END;
 $proc$;
 
 
-CREATE or replace PROCEDURE REVDATE_enable (
+CREATE or replace PROCEDURE pgf_revdate_enable (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -113,7 +113,7 @@ begin
 end;
 $proc$;
 
-CREATE or replace PROCEDURE REVDATE_drop (
+CREATE or replace PROCEDURE pgf_revdate_drop (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -132,7 +132,7 @@ end;
 $proc$;
 
 
-CREATE or replace PROCEDURE REVDATE_refresh (
+CREATE or replace PROCEDURE pgf_revdate_refresh (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -144,7 +144,7 @@ $proc$;
 --------------------------------------------------------------------------------
 -- COUNTLNK
 --------------------------------------------------------------------------------
-CREATE or replace PROCEDURE COUNTLNK_create (
+CREATE or replace PROCEDURE pgf_count (
 	id TEXT,
     base_table_name TEXT,
     base_pk TEXT,
@@ -190,7 +190,7 @@ BEGIN
 		);
 
 	execute format($inner_proc$
-		CREATE or replace PROCEDURE "COUNTLNK_refresh_%I"()
+		CREATE or replace PROCEDURE "pgf_count_refresh_%I"()
 		LANGUAGE plpgsql
 		AS $inner_proc2$
 			begin
@@ -234,18 +234,18 @@ BEGIN
 		id -- trigger function name
 	);
 
-	call COUNTLNK_refresh(id);
+	call pgf_count_refresh(id);
 
 END;
 $proc$;
 
 
-CREATE or replace PROCEDURE COUNTLNK_refresh (
+CREATE or replace PROCEDURE pgf_count_refresh (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
 begin
-	execute format('call "COUNTLNK_refresh_%I"();', id);
+	execute format('call "pgf_count_refresh_%I"();', id);
 end;
 $proc$;
 
@@ -263,11 +263,11 @@ begin
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('alter table %I enable trigger COUNTLNK_trg_%I', table_name, id);
 	execute format('alter table %I enable trigger COUNTLNK_trg_truncate_%I', table_name, id);
-	call COUNTLNK_refresh(id);
+	call pgf_count_refresh(id);
 end;
 $proc$;
 
-CREATE or replace PROCEDURE COUNTLNK_disable (
+CREATE or replace PROCEDURE pgf_count_disable (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -283,7 +283,7 @@ begin
 end;
 $proc$;
 
-CREATE or replace PROCEDURE COUNTLNK_drop (
+CREATE or replace PROCEDURE pgf_count_drop (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -295,7 +295,7 @@ begin
 	table_name := args->>'table_name';
 	
 	execute format('drop trigger if exists COUNTLNK_trg_%I on %i', id, table_name);
-	execute format('drop procedure if exists COUNTLNK_refresh_%I', id);
+	execute format('drop procedure if exists pgf_count_refresh_%I', id);
 
 	call pgf_internal_delete_metadata(id);
 end;
@@ -304,7 +304,7 @@ $proc$;
 --------------------------------------------------------------------------------
 -- AGG
 --------------------------------------------------------------------------------
-CREATE or replace PROCEDURE AGG_create (
+CREATE or replace PROCEDURE pgf_minmax_table (
 	id text,
     table_name TEXT,
 	pk TEXT,
@@ -551,7 +551,7 @@ BEGIN
 	);
 
 	execute format($inner_proc$
-		CREATE or replace PROCEDURE AGG_refresh_%I() -- id
+		CREATE or replace PROCEDURE pgf_minmax_table_refresh_%I() -- id
 		LANGUAGE plpgsql
 		AS $body$
 			begin
@@ -598,20 +598,20 @@ BEGIN
 		, group_by_columns_joined
 	);
 
-	call AGG_refresh(id);
+	call pgf_minmax_table_refresh(id);
 END;
 $proc$;
 
-create or replace procedure agg_refresh(
+create or replace procedure pgf_minmax_table_refresh(
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	execute format('call agg_refresh_%I();', id);
+	execute format('call pgf_minmax_table_refresh_%I();', id);
 END;
 $proc$;
 
-create or replace procedure agg_enable(
+create or replace procedure pgf_minmax_table_enable(
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -624,11 +624,11 @@ BEGIN
 
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('alter table %I enable trigger AGG_trg_%i;', table_name, id);
-	call agg_refresh(id);
+	call pgf_minmax_table_refresh(id);
 END;
 $proc$;
 
-create or replace procedure agg_disable(
+create or replace procedure pgf_minmax_table_disable(
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -643,7 +643,7 @@ BEGIN
 END;
 $proc$;
 
-create or replace procedure agg_drop(
+create or replace procedure pgf_minmax_table_drop(
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -655,7 +655,7 @@ BEGIN
 	table_name := args->>base_table_name;
 
 	execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
-	call agg_refresh(id);
+	call pgf_minmax_table_refresh(id);
 END;
 $proc$;
 
@@ -669,7 +669,7 @@ $proc$;
 --   pk_column TEXT: Name of the primary key column
 --   parent_column TEXT: Name of the column referencing the parent node (nullable for root)
 --   level_column TEXT: Name of the column to store the level (integer, must exist in table)
-CREATE OR REPLACE PROCEDURE TREELEVEL_create(
+CREATE OR REPLACE PROCEDURE pgf_treelevel(
     id TEXT,
     table_name TEXT,
     pk_column TEXT,
@@ -767,7 +767,7 @@ BEGIN
     );
 
 	execute format($inner_proc$
-		CREATE OR REPLACE PROCEDURE TREELEVEL_refresh_%I() -- id
+		CREATE OR REPLACE PROCEDURE pgf_treelevel_refresh_%I() -- id
 		LANGUAGE plpgsql AS $inner_proc2$
 		BEGIN
 			-- Full refresh: update all levels in the table
@@ -810,14 +810,14 @@ BEGIN
 	, table_name, pk_column, pk_column
 	);
     -- Full refresh: update all levels in the table
-	call TREELEVEL_refresh(id);
+	call pgf_treelevel_refresh(id);
 
 END;
 $proc$;
 
 -- Enable/disable/drop/refresh procedures for TREELEVEL
 
-CREATE OR REPLACE PROCEDURE TREELEVEL_enable(
+CREATE OR REPLACE PROCEDURE pgf_treelevel_enable(
     id TEXT,
     table_name TEXT
 ) LANGUAGE plpgsql AS $proc$
@@ -827,11 +827,11 @@ DECLARE
 BEGIN
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
-	call treelevel_refresh(id);
+	call pgf_treelevel_refresh(id);
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE TREELEVEL_disable(
+CREATE OR REPLACE PROCEDURE pgf_treelevel_disable(
     id TEXT,
     table_name TEXT
 ) LANGUAGE plpgsql AS $proc$
@@ -842,7 +842,7 @@ BEGIN
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE TREELEVEL_drop(
+CREATE OR REPLACE PROCEDURE pgf_treelevel_drop(
     id TEXT,
     table_name TEXT
 ) LANGUAGE plpgsql AS $proc$
@@ -856,19 +856,19 @@ BEGIN
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE TREELEVEL_refresh(
+CREATE OR REPLACE PROCEDURE pgf_treelevel_refresh(
     id TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
 BEGIN
-	execute format('call TREELEVEL_refresh_%I();', id);
+	execute format('call pgf_treelevel_refresh_%I();', id);
 END;
 $proc$;
 
 --------------------------------------------------------------------------------
 -- UNION
 --------------------------------------------------------------------------------
-CREATE OR REPLACE PROCEDURE UNION_create(
+CREATE OR REPLACE PROCEDURE pgf_inheritance_table(
     id TEXT,
     base_table_name TEXT,
     sub_tables TEXT[],
@@ -957,7 +957,7 @@ BEGIN
     END LOOP;
 
 	execute format($inner_proc$
-		CREATE OR REPLACE PROCEDURE UNION_refresh_%I() -- id
+		CREATE OR REPLACE PROCEDURE pgf_inheritance_table_refresh_%I() -- id
 		LANGUAGE plpgsql AS $inner_proc2$
 		BEGIN
 			%s -- sql
@@ -1082,12 +1082,12 @@ BEGIN
         END LOOP;
     END IF;
 
-	call UNION_refresh(id);
+	call pgf_inheritance_table_refresh(id);
 
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE UNION_enable(
+CREATE OR REPLACE PROCEDURE pgf_inheritance_table_enable(
     id TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
@@ -1114,12 +1114,12 @@ BEGIN
 			execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
 		END LOOP;
 	END IF;
-	call union_refresh(id);
+	call pgf_inheritance_table_refresh(id);
 END;
 $proc$;
 
 
-CREATE OR REPLACE PROCEDURE UNION_disable(
+CREATE OR REPLACE PROCEDURE pgf_inheritance_table_disable(
     id TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
@@ -1146,7 +1146,7 @@ END;
 $proc$;
 
 
-CREATE OR REPLACE PROCEDURE UNION_drop(
+CREATE OR REPLACE PROCEDURE pgf_inheritance_table_drop(
     id TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
@@ -1177,11 +1177,11 @@ BEGIN
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE UNION_refresh(
+CREATE OR REPLACE PROCEDURE pgf_inheritance_table_refresh(
     id TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
 BEGIN
-	execute format('call UNION_refresh_%I();', id);
+	execute format('call pgf_inheritance_table_refresh_%I();', id);
 END;
 $proc$;
