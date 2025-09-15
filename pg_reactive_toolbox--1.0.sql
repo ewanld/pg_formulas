@@ -2,28 +2,28 @@
 -- INTERNAL/UTILITY FUNCTIONS
 --------------------------------------------------------------------------------
 -- Insert a row inot the metadata table. args is a JSON object containing procedure arguments.
-CREATE or replace PROCEDURE pgrt_internal_insert_metadata (
+CREATE or replace PROCEDURE pgf_internal_insert_metadata (
 	id TEXT,
 	args JSONB
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	CREATE TABLE IF NOT EXISTS pgrt_metadata(id TEXT primary key, args JSONB);
-	insert into pgrt_metadata values(id, args);
+	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, args JSONB);
+	insert into pgf_metadata values(id, args);
 END;
 $proc$;
 
-CREATE or replace PROCEDURE pgrt_internal_delete_metadata (
+CREATE or replace PROCEDURE pgf_internal_delete_metadata (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	delete from pgrt_metadata m where m.id = pgrt_internal_delete_metadata.id;
+	delete from pgf_metadata m where m.id = pgf_internal_delete_metadata.id;
 END;
 $proc$;
 
 -- Get a row inot the metadata table. args is a JSON object containing procedure arguments.
-CREATE or replace FUNCTION pgrt_internal_get_metadata (
+CREATE or replace FUNCTION pgf_internal_get_metadata (
 	id TEXT
 )
 RETURNS JSONB
@@ -31,14 +31,14 @@ LANGUAGE plpgsql AS $proc$
 DECLARE
 	res JSONB;
 BEGIN
-	CREATE TABLE IF NOT EXISTS pgrt_metadata(id TEXT primary key, args JSONB);
-	select args INTO res from pgrt_metadata m where m.id = pgrt_internal_get_metadata.id;
+	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, args JSONB);
+	select args INTO res from pgf_metadata m where m.id = pgf_internal_get_metadata.id;
 	return res;
 END;
 $proc$;
 
 
-CREATE OR REPLACE FUNCTION pgrt_internal_jsonb_to_text_array(j jsonb)
+CREATE OR REPLACE FUNCTION pgf_internal_jsonb_to_text_array(j jsonb)
 RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
     SELECT array_agg(value)
     FROM jsonb_array_elements_text(j) AS t(value);
@@ -47,14 +47,14 @@ $$;
 -------------------------------------------------------------------------------
 -- REVDATE
 --------------------------------------------------------------------------------
-CREATE or replace PROCEDURE REVDATE_create (
+CREATE or replace PROCEDURE pgf_revdate (
 	id TEXT,
     table_name TEXT,
     column_name TEXT
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	call pgrt_internal_insert_metadata(id, jsonb_build_object('table_name', table_name, 'column_name', column_name));
+	call pgf_internal_insert_metadata(id, jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
 		CREATE OR REPLACE FUNCTION "REVDATE_trgfun_%I"()
 		RETURNS TRIGGER AS $inner_trg$
@@ -89,7 +89,7 @@ declare
 	args JSONB;
 	table_name TEXT;
 begin
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>'table_name';
 	execute format($$
 		ALTER TABLE %I enable TRIGGER "REVDATE_trg_%I";
@@ -105,7 +105,7 @@ declare
 	args JSONB;
 	table_name TEXT;
 begin
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>'table_name';
 	execute format($$
 		ALTER TABLE %I disable TRIGGER "REVDATE_trg_%I";
@@ -121,13 +121,13 @@ declare
 	args JSONB;
 	table_name TEXT;
 begin
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>'table_name';
 
 	execute format('DROP TRIGGER IF EXISTS "REVDATE_trg_%I" ON %I;', id, table_name);
 	execute format('DROP function if exists "REVDATE_trgfun_%I";', id);
 
-	call pgrt_internal_delete_metadata(id);
+	call pgf_internal_delete_metadata(id);
 end;
 $proc$;
 
@@ -154,7 +154,7 @@ CREATE or replace PROCEDURE COUNTLNK_create (
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, jsonb_build_object(
 		'base_table_name', base_table_name,
 		'base_pk', base_pk,
 		'base_count_column', base_count_column,
@@ -257,7 +257,7 @@ declare
 	args JSONB;
 	table_name TEXT;
 begin
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>'table_name';
 	
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
@@ -275,7 +275,7 @@ declare
 	args JSONB;
 	table_name TEXT;
 begin
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>'table_name';
 	
 	execute format('alter table %I disable trigger COUNTLNK_trg_%I', table_name, id);
@@ -291,13 +291,13 @@ declare
 	args JSONB;
 	table_name TEXT;
 begin
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>'table_name';
 	
 	execute format('drop trigger if exists COUNTLNK_trg_%I on %i', id, table_name);
 	execute format('drop procedure if exists COUNTLNK_refresh_%I', id);
 
-	call pgrt_internal_delete_metadata(id);
+	call pgf_internal_delete_metadata(id);
 end;
 $proc$;
 
@@ -330,7 +330,7 @@ BEGIN
 		agg_table := 'agg_' || id;
 	END IF;
 
-	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, jsonb_build_object(
 		'table_name', table_name,
 		'pk', pk,
 		'aggregate_column', aggregate_column,
@@ -619,7 +619,7 @@ DECLARE
 	table_name TEXT;
 	args JSONB;
 BEGIN
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>base_table_name;
 
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
@@ -636,7 +636,7 @@ DECLARE
 	table_name TEXT;
 	args JSONB;
 BEGIN
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>base_table_name;
 	
 	execute format('alter table %I disable trigger AGG_trg_%i;', table_name, id);
@@ -651,7 +651,7 @@ DECLARE
 	table_name TEXT;
 	args JSONB;
 BEGIN
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	table_name := args->>base_table_name;
 
 	execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
@@ -680,7 +680,7 @@ DECLARE
     trg_func_name TEXT := format('treelevel_func_%s', id);
     trg_name TEXT := format('treelevel_trg_%s', id);
 BEGIN
-	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, jsonb_build_object(
 		'table_name', table_name,
 		'pk_column', pk_column,
 		'parent_column', parent_column,
@@ -852,7 +852,7 @@ DECLARE
 BEGIN
     execute format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
     execute format('DROP FUNCTION IF EXISTS %I();', trg_func_name);
-	call pgrt_internal_delete_metadata(id);
+	call pgf_internal_delete_metadata(id);
 END;
 $proc$;
 
@@ -895,7 +895,7 @@ BEGIN
 		discriminator_values := sub_tables;
 	end if;
 
-	call pgrt_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, jsonb_build_object(
 		'base_table_name', base_table_name,
 		'sub_tables', sub_tables,
 		'sync_direction', sync_direction,
@@ -1096,7 +1096,7 @@ DECLARE
     sync_direction TEXT DEFAULT 'BASE_TO_SUB';
 	args JSONB;
 BEGIN
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	base_table_name := args->>base_table_name;
 	sub_tables := (args->>sub_tables)::text[];
 	sync_direction := args->>sync_direction;
@@ -1128,7 +1128,7 @@ DECLARE
     sync_direction TEXT DEFAULT 'BASE_TO_SUB';
 	args JSONB;
 BEGIN
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	base_table_name := args->>base_table_name;
 	sub_tables := (args->>sub_tables)::text[];
 	sync_direction := args->>sync_direction;
@@ -1155,10 +1155,10 @@ DECLARE
     sync_direction TEXT DEFAULT 'BASE_TO_SUB';
 	args JSONB;
 BEGIN
-	args := pgrt_internal_get_metadata(id);
+	args := pgf_internal_get_metadata(id);
 	base_table_name := args->>'base_table_name';
-	sub_tables := pgrt_internal_jsonb_to_text_array(args->'sub_tables');
-	insert into pgrt_metadata values('debug', jsonb_build_object('message', sub_tables));
+	sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
+	insert into pgf_metadata values('debug', jsonb_build_object('message', sub_tables));
 	commit;
 	sync_direction := args->>'sync_direction';
 
@@ -1173,7 +1173,7 @@ BEGIN
 			execute format('drop function if exists UNION_base_to_sub_trgfun_%s_%s; ', id, base_table_name);
 		END LOOP;
 	END IF;
-	call pgrt_internal_delete_metadata(id);
+	call pgf_internal_delete_metadata(id);
 END;
 $proc$;
 

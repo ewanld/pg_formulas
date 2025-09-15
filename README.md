@@ -261,4 +261,4 @@ This will :
 > **NB**: to synchronize changes from ```bike``` and ```car``` to ```vehicle``` instead, use the argument 'SUB_TO_BASE'.
 
 # Implementation details
-A metadata table named ```pgrt_metadata``` is created to track all formula declarations.
+A metadata table named ```pgf_metadata``` is created to track all formula declarations.

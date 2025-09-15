@@ -1,27 +1,44 @@
 # Roadmap
 Functions to implement:
   
-| Tag                | Status   |
-|--------------------|----------|
-| `TREELEVEL`        | 🟢DONE   |
-| `TREEPATH`         | 🟠TODO   |
-| `TREECLOSURE`      | 🟠TODO   |
-| `COUNTLNK`         | 🟢DONE   |
-| `REVDATE`          | 🟢DONE   |
-| `CREDATE`          | 🟠TODO   |
-| `AUDIT`            | 🟠TODO   |
-| `AGG`              | 🟢DONE   |
-| `SUM`              | 🟠TODO   |
-| `COUNT`            | 🟠TODO   |
-| `ARRAY_AGG_LINKED` | 🟠TODO   |
-| `STRING_AGG_LINKED`| 🟠TODO   |
-| `TOPN`             | 🟠TODO   |
-| `INHERITANCE`      | 🟢DONE   |
-| `UNION`            | 🟠TODO   |
-| `INTERSECT`        | 🟠TODO   |
-| `JOIN`             | 🟠TODO   |
-| `JSON`             | 🟠TODO   |
+**Aggregate data into a single database field**
+* 🟠TODO : SUM
+* 🟢DONE : COUNT
+* 🟠TODO : MIN
+* 🟠TODO : MAX
+* 🟠TODO : ID_OF_MIN
+* 🟠TODO : ID_OF_MAX
+* 🟠TODO : ARRAY_AGG
+* 🟠TODO : STRING_AGG
+
+**Aggregate data into a dedicated table**:
+  * 🟢DONE : MINMAX_TABLE
+  * 🟠TODO : SUM_TABLE
+  * 🟠TODO : COUNT_TABLE
+  * 🟠TODO : TOPN_TABLE
+
+**Merge, split, or join tables:**
+  * 🟢DONE : INHERITANCE_TABLE
+  * 🟠TODO : UNION_TABLE
+  * 🟠TODO : INTERSECT_TABLE
+  * 🟠TODO : EXCEPT_TABLE
+  * 🟠TODO : JOIN
+
+**Auditing changes:**
+  * 🟢DONE : REVDATE
+  * 🟠TODO : CREDATE
+  * 🟠TODO : AUDIT_TABLE
+ 
+**Working with trees:**
+  * 🟢DONE : TREELEVEL
+  * 🟠TODO : TREEPATH
+  * 🟠TODO : TREECLOSURE_TABLE
+
+**Working with JSON:**
+  * 🟠TODO : JSON_FIELD
 
 # TODO
 
-* UNION_create: make pk column name configurable
+* pgf_inheritance_table: make pk column name configurable
+* ALL: allow composite PKs
+* 
