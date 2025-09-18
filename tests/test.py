@@ -27,8 +27,9 @@ class TestModule(unittest.TestCase):
         
         current_dir = Path(__file__).resolve().parent
 
-        cls.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
         cls.cur.execute('drop table if exists pgf_metadata;')
+        cls.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
+        cls.cur.execute("commit;")
 
     @classmethod
     def execute_sql_file(cls, sql_file):
@@ -111,7 +112,7 @@ class TestModule(unittest.TestCase):
 
         # test 3 : manual refresh
         self.cur.execute("update customer set invoice_count=0;")
-        self.cur.execute(f"call pgf_count_refresh('{func_id}');")
+        self.cur.execute(f"call pgf_refresh(%s);", (func_id,))
         self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
         self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
 
@@ -486,8 +487,8 @@ class TestModule(unittest.TestCase):
         id = 'uvehicle_metadata';
         self.cur.execute("call pgf_inheritance_table(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
         self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
-        #self.cur.execute("call pgf_inheritance_table_drop(%s)", (id,));
-        #self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
+        self.cur.execute("call pgf_inheritance_table_drop(%s)", (id,));
+        self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
 
 
         self.cur.execute("commit");

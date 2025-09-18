@@ -4,12 +4,13 @@
 -- Insert a row inot the metadata table. args is a JSON object containing procedure arguments.
 CREATE or replace PROCEDURE pgf_internal_insert_metadata (
 	id TEXT,
+	kind TEXT,
 	args JSONB
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, args JSONB);
-	insert into pgf_metadata values(id, args);
+	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, kind TEXT, args JSONB, created_at TIMESTAMP);
+	insert into pgf_metadata values(id, kind, args, CURRENT_TIMESTAMP);
 END;
 $proc$;
 
@@ -22,7 +23,7 @@ BEGIN
 END;
 $proc$;
 
--- Get a row from the metadata table. args is a JSON object containing procedure arguments.
+-- Get a row from the metadata table. args is a JSON object containing procedure arguments + a special attribute 'kind".
 CREATE or replace FUNCTION pgf_internal_get_metadata (
 	id TEXT
 )
@@ -31,8 +32,8 @@ LANGUAGE plpgsql AS $proc$
 DECLARE
 	res JSONB;
 BEGIN
-	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, args JSONB);
-	select args INTO res from pgf_metadata m where m.id = pgf_internal_get_metadata.id;
+	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, kind TEXT, args JSONB, created_at TIMESTAMP);
+	select args || jsonb_build_object('kind', kind) INTO res from pgf_metadata m where m.id = pgf_internal_get_metadata.id;
 	return res;
 END;
 $proc$;
@@ -44,6 +45,24 @@ RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
     FROM jsonb_array_elements_text(j) AS t(value);
 $$;
 
+create or replace procedure pgf_refresh(
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+	args JSONB;
+	kind TEXT;
+BEGIN
+	args := pgf_internal_get_metadata(id);
+	kind := args->>'kind';
+	IF kind = 'revdate' then
+		-- no op
+	ELSE
+		execute format('call "pgf_%I_refresh_%I"();', kind, id);
+	end IF;
+END;
+$proc$;
+
 -------------------------------------------------------------------------------
 -- REVDATE
 --------------------------------------------------------------------------------
@@ -54,7 +73,7 @@ CREATE or replace PROCEDURE pgf_revdate (
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	call pgf_internal_insert_metadata(id, jsonb_build_object('table_name', table_name, 'column_name', column_name));
+	call pgf_internal_insert_metadata(id, 'revdate', jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
 		CREATE OR REPLACE FUNCTION "REVDATE_trgfun_%I"()
 		RETURNS TRIGGER AS $inner_trg$
@@ -131,18 +150,8 @@ begin
 end;
 $proc$;
 
-
-CREATE or replace PROCEDURE pgf_revdate_refresh (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-begin
-	-- no op
-end;
-$proc$;
-
 --------------------------------------------------------------------------------
--- COUNTLNK
+-- COUNT
 --------------------------------------------------------------------------------
 CREATE or replace PROCEDURE pgf_count (
 	id TEXT,
@@ -154,7 +163,7 @@ CREATE or replace PROCEDURE pgf_count (
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	call pgf_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, 'count', jsonb_build_object(
 		'base_table_name', base_table_name,
 		'base_pk', base_pk,
 		'base_count_column', base_count_column,
@@ -234,22 +243,13 @@ BEGIN
 		id -- trigger function name
 	);
 
-	call pgf_count_refresh(id);
+	call pgf_refresh(id);
 
 END;
 $proc$;
 
 
-CREATE or replace PROCEDURE pgf_count_refresh (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-begin
-	execute format('call "pgf_count_refresh_%I"();', id);
-end;
-$proc$;
-
-CREATE or replace PROCEDURE COUNTLNK_enable (
+CREATE or replace PROCEDURE pgf_count_enable (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
@@ -263,7 +263,7 @@ begin
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('alter table %I enable trigger COUNTLNK_trg_%I', table_name, id);
 	execute format('alter table %I enable trigger COUNTLNK_trg_truncate_%I', table_name, id);
-	call pgf_count_refresh(id);
+	call pgf_refresh(id);
 end;
 $proc$;
 
@@ -302,7 +302,7 @@ end;
 $proc$;
 
 --------------------------------------------------------------------------------
--- AGG
+-- MINMAX
 --------------------------------------------------------------------------------
 CREATE or replace PROCEDURE pgf_minmax_table (
 	id text,
@@ -330,7 +330,7 @@ BEGIN
 		agg_table := 'agg_' || id;
 	END IF;
 
-	call pgf_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, 'minmax_table', jsonb_build_object(
 		'table_name', table_name,
 		'pk', pk,
 		'aggregate_column', aggregate_column,
@@ -598,16 +598,7 @@ BEGIN
 		, group_by_columns_joined
 	);
 
-	call pgf_minmax_table_refresh(id);
-END;
-$proc$;
-
-create or replace procedure pgf_minmax_table_refresh(
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-BEGIN
-	execute format('call pgf_minmax_table_refresh_%I();', id);
+	call pgf_refresh(id);
 END;
 $proc$;
 
@@ -624,7 +615,7 @@ BEGIN
 
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('alter table %I enable trigger AGG_trg_%i;', table_name, id);
-	call pgf_minmax_table_refresh(id);
+	call pgf_refresh(id);
 END;
 $proc$;
 
@@ -655,7 +646,7 @@ BEGIN
 	table_name := args->>base_table_name;
 
 	execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
-	call pgf_minmax_table_refresh(id);
+	call pgf_refresh(id);
 END;
 $proc$;
 
@@ -680,7 +671,7 @@ DECLARE
     trg_func_name TEXT := format('treelevel_func_%s', id);
     trg_name TEXT := format('treelevel_trg_%s', id);
 BEGIN
-	call pgf_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, 'treelevel', jsonb_build_object(
 		'table_name', table_name,
 		'pk_column', pk_column,
 		'parent_column', parent_column,
@@ -810,7 +801,7 @@ BEGIN
 	, table_name, pk_column, pk_column
 	);
     -- Full refresh: update all levels in the table
-	call pgf_treelevel_refresh(id);
+	call pgf_refresh(id);
 
 END;
 $proc$;
@@ -827,7 +818,7 @@ DECLARE
 BEGIN
 	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 	execute format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
-	call pgf_treelevel_refresh(id);
+	call pgf_refresh(id);
 END;
 $proc$;
 
@@ -856,17 +847,9 @@ BEGIN
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE pgf_treelevel_refresh(
-    id TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-BEGIN
-	execute format('call pgf_treelevel_refresh_%I();', id);
-END;
-$proc$;
 
 --------------------------------------------------------------------------------
--- UNION
+-- INHERITANCE_TABLE
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE pgf_inheritance_table(
     id TEXT,
@@ -895,7 +878,7 @@ BEGIN
 		discriminator_values := sub_tables;
 	end if;
 
-	call pgf_internal_insert_metadata(id, jsonb_build_object(
+	call pgf_internal_insert_metadata(id, 'inheritance_table', jsonb_build_object(
 		'base_table_name', base_table_name,
 		'sub_tables', sub_tables,
 		'sync_direction', sync_direction,
@@ -1082,7 +1065,7 @@ BEGIN
         END LOOP;
     END IF;
 
-	call pgf_inheritance_table_refresh(id);
+	call pgf_refresh(id);
 
 END;
 $proc$;
@@ -1114,7 +1097,7 @@ BEGIN
 			execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
 		END LOOP;
 	END IF;
-	call pgf_inheritance_table_refresh(id);
+	call pgf_refresh(id);
 END;
 $proc$;
 
@@ -1158,8 +1141,6 @@ BEGIN
 	args := pgf_internal_get_metadata(id);
 	base_table_name := args->>'base_table_name';
 	sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
-	insert into pgf_metadata values('debug', jsonb_build_object('message', sub_tables));
-	commit;
 	sync_direction := args->>'sync_direction';
 
 	IF sync_direction = 'SUB_TO_BASE' THEN
@@ -1177,11 +1158,3 @@ BEGIN
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE pgf_inheritance_table_refresh(
-    id TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-BEGIN
-	execute format('call pgf_inheritance_table_refresh_%I();', id);
-END;
-$proc$;
