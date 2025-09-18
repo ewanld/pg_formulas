@@ -63,6 +63,61 @@ BEGIN
 END;
 $proc$;
 
+CREATE or replace PROCEDURE pgf_drop (
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+declare
+	args JSONB;
+	kind TEXT;
+	table_name TEXT;
+	base_table_name TEXT;
+    sub_tables TEXT[];
+    sync_direction TEXT;
+begin
+	args := pgf_internal_get_metadata(id);
+	kind := args->>'kind';
+	
+	-- drop refresh procedure
+	execute format('drop procedure if exists pgf_%I_refresh_%I', kind, id);
+
+	-- drop other objects
+	if kind = 'revdate' then
+		table_name := args->>'table_name';
+		execute format('DROP TRIGGER IF EXISTS "REVDATE_trg_%I" ON %I;', id, table_name);
+		execute format('DROP function if exists "REVDATE_trgfun_%I";', id);
+	ELSIF kind = 'count' then
+		table_name := args->>'table_name';
+		execute format('drop trigger if exists COUNTLNK_trg_%I on %i', id, table_name);
+	ELSIF kind = 'minmax_table' then
+		execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
+	ELSIF kind = 'treelevel' then
+		table_name := args->>'table_name';
+		execute format('DROP TRIGGER IF EXISTS treelevel_trg_%s ON %I;', id, table_name);
+    	execute format('DROP FUNCTION IF EXISTS treelevel_func_%s();', id);
+	ELSIF kind = 'inheritance_table' then
+		base_table_name := args->>'base_table_name';
+		sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
+		sync_direction := args->>'sync_direction';
+
+		IF sync_direction = 'SUB_TO_BASE' THEN
+			FOR i IN 1..array_length(sub_tables, 1) LOOP
+				execute format('drop trigger if exists UNION_sub_to_base_trg_%s_%s on %I; ', id, sub_tables[i], sub_tables[i]);
+				execute format('drop function if exists UNION_sub_to_base_trgfun_%s_%s; ', id, sub_tables[i]);
+			END LOOP;
+		ELSE
+			FOR i IN 1..array_length(sub_tables, 1) LOOP
+				execute format('drop trigger if exists UNION_base_to_sub_trg_%s_%s on %I; ', id, sub_tables[i], base_table_name);
+				execute format('drop function if exists UNION_base_to_sub_trgfun_%s_%s; ', id, base_table_name);
+			END LOOP;
+		END IF;
+	end if;
+
+	call pgf_internal_delete_metadata(id);
+
+end;
+$proc$;
+
 -------------------------------------------------------------------------------
 -- REVDATE
 --------------------------------------------------------------------------------
@@ -129,24 +184,6 @@ begin
 	execute format($$
 		ALTER TABLE %I disable TRIGGER "REVDATE_trg_%I";
 		$$, table_name, id);
-end;
-$proc$;
-
-CREATE or replace PROCEDURE pgf_revdate_drop (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-declare
-	args JSONB;
-	table_name TEXT;
-begin
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>'table_name';
-
-	execute format('DROP TRIGGER IF EXISTS "REVDATE_trg_%I" ON %I;', id, table_name);
-	execute format('DROP function if exists "REVDATE_trgfun_%I";', id);
-
-	call pgf_internal_delete_metadata(id);
 end;
 $proc$;
 
@@ -283,23 +320,6 @@ begin
 end;
 $proc$;
 
-CREATE or replace PROCEDURE pgf_count_drop (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-declare
-	args JSONB;
-	table_name TEXT;
-begin
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>'table_name';
-	
-	execute format('drop trigger if exists COUNTLNK_trg_%I on %i', id, table_name);
-	execute format('drop procedure if exists pgf_count_refresh_%I', id);
-
-	call pgf_internal_delete_metadata(id);
-end;
-$proc$;
 
 --------------------------------------------------------------------------------
 -- MINMAX
@@ -634,21 +654,6 @@ BEGIN
 END;
 $proc$;
 
-create or replace procedure pgf_minmax_table_drop(
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-DECLARE
-	table_name TEXT;
-	args JSONB;
-BEGIN
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>base_table_name;
-
-	execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
-	call pgf_refresh(id);
-END;
-$proc$;
 
 --------------------------------------------------------------------------------
 -- TREELEVEL
@@ -830,20 +835,6 @@ DECLARE
     trg_name TEXT := format('treelevel_trg_%s', id);
 BEGIN
     execute format('ALTER TABLE %I DISABLE TRIGGER %I;', table_name, trg_name);
-END;
-$proc$;
-
-CREATE OR REPLACE PROCEDURE pgf_treelevel_drop(
-    id TEXT,
-    table_name TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-    trg_func_name TEXT := format('treelevel_func_%s', id);
-    trg_name TEXT := format('treelevel_trg_%s', id);
-BEGIN
-    execute format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
-    execute format('DROP FUNCTION IF EXISTS %I();', trg_func_name);
-	call pgf_internal_delete_metadata(id);
 END;
 $proc$;
 
@@ -1125,36 +1116,6 @@ BEGIN
 			execute format('alter table %I disable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
 		END LOOP;
 	END IF;
-END;
-$proc$;
-
-
-CREATE OR REPLACE PROCEDURE pgf_inheritance_table_drop(
-    id TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-	base_table_name TEXT;
-    sub_tables TEXT[];
-    sync_direction TEXT DEFAULT 'BASE_TO_SUB';
-	args JSONB;
-BEGIN
-	args := pgf_internal_get_metadata(id);
-	base_table_name := args->>'base_table_name';
-	sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
-	sync_direction := args->>'sync_direction';
-
-	IF sync_direction = 'SUB_TO_BASE' THEN
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('drop trigger if exists UNION_sub_to_base_trg_%s_%s on %I; ', id, sub_tables[i], sub_tables[i]);
-			execute format('drop function if exists UNION_sub_to_base_trgfun_%s_%s; ', id, sub_tables[i]);
-		END LOOP;
-	ELSE
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('drop trigger if exists UNION_base_to_sub_trg_%s_%s on %I; ', id, sub_tables[i], base_table_name);
-			execute format('drop function if exists UNION_base_to_sub_trgfun_%s_%s; ', id, base_table_name);
-		END LOOP;
-	END IF;
-	call pgf_internal_delete_metadata(id);
 END;
 $proc$;
 
