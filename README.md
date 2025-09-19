@@ -151,7 +151,7 @@ TODO
 
 TODO
 
-## AGG formula
+## MINMAX_TABLE formula
 **_Create an aggregation function (count + min or max) for rows in a table, with optional GROUP BY_**
 
 TODO
@@ -276,7 +276,7 @@ This will :
 
 > **NB**: to synchronize changes from ```bike``` and ```car``` to ```vehicle``` instead, use the argument 'SUB_TO_BASE'.
 
-# AUDIT_TABLE formula
+## AUDIT_TABLE formula
 **_Populate a history (audit) table._**
 
 This formula creates an audit table allowing to track insert, update and delete events across one or several tables.

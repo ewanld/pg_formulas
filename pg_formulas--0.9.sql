@@ -128,6 +128,11 @@ begin
 			execute format('DROP TRIGGER IF EXISTS _pgf_internal_audit_table_trg_%s_%s ON %I;', id, sub_tables[i], sub_tables[i]);
 			execute format('DROP FUNCTION IF EXISTS _pgf_internal_audit_table_trgfun_%s_%s();', id, sub_tables[i]);
 		END LOOP;
+
+	ELSIF kind = 'sync' then
+		table_name := args->>'table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_sync_trg_%I ON %I;', id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_sync_trgfun_%I();', id);
 	end if;
 
 	call _pgf_internal_delete_metadata(id);
@@ -208,6 +213,11 @@ begin
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
 			execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_audit_table_trg_%s_%s;', sub_tables[i], enable_fragment, id, sub_tables[i]);
 		END LOOP;
+
+	elsif kind = 'sync' then
+		table_name := args->>'table_name';
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_sync_trg_%I;', table_name, enable_fragment, id);
+	
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
@@ -250,6 +260,8 @@ BEGIN
 		table_name,
 		id
 	);
+
+	-- no full refresh necessay here
 
 END;
 $proc$;
@@ -1049,7 +1061,7 @@ $proc$;
 -- AUDIT_TABLE
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE pgf_audit_table(
-    formula_id TEXT,
+    id TEXT,
     audit_table_name TEXT,
 	audited_table_names TEXT[],
     options JSONB DEFAULT '{}'::JSONB
@@ -1085,7 +1097,7 @@ BEGIN
     op_delete := operations_mapping->>'DELETE';
 
     -- Insert metadata
-    call _pgf_internal_insert_metadata(formula_id, 'audit_table', jsonb_build_object(
+    call _pgf_internal_insert_metadata(id, 'audit_table', jsonb_build_object(
         'audited_table_names', audited_table_names,
         'audit_table_name', audit_table_name,
         'options', options
@@ -1109,8 +1121,8 @@ BEGIN
 
     -- Create triggers for each audited table
     FOR i IN 1..array_length(audited_table_names, 1) LOOP
-        trg_func_name := format('_pgf_internal_audit_table_trgfun_%s_%s', formula_id, audited_table_names[i]);
-        trg_name := format('_pgf_internal_audit_table_trg_%s_%s', formula_id, audited_table_names[i]);
+        trg_func_name := format('_pgf_internal_audit_table_trgfun_%s_%s', id, audited_table_names[i]);
+        trg_name := format('_pgf_internal_audit_table_trg_%s_%s', id, audited_table_names[i]);
 
         EXECUTE format($f$
             CREATE OR REPLACE FUNCTION %I()
@@ -1169,7 +1181,7 @@ $proc$;
 -- SYNC
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE pgf_sync(
-    formula_id TEXT,
+    id TEXT,
     table_name TEXT,
     column1 TEXT,
     column2 TEXT
@@ -1177,11 +1189,11 @@ CREATE OR REPLACE PROCEDURE pgf_sync(
 LANGUAGE plpgsql
 AS $proc$
 DECLARE
-    trg_func_name TEXT := format('_pgf_internal_sync_trgfun_%s', formula_id);
-    trg_name TEXT := format('_pgf_internal_sync_trg_%s', formula_id);
+    trg_func_name TEXT := format('_pgf_internal_sync_trgfun_%s', id);
+    trg_name TEXT := format('_pgf_internal_sync_trg_%s', id);
 BEGIN
     -- Insert metadata
-    call _pgf_internal_insert_metadata(formula_id, 'sync', jsonb_build_object(
+    call _pgf_internal_insert_metadata(id, 'sync', jsonb_build_object(
         'table_name', table_name,
         'column1', column1,
         'column2', column2
@@ -1208,7 +1220,7 @@ BEGIN
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-    $f$,
+    $f$
 		, trg_func_name
 		, column1
 		, column2, column1
@@ -1232,7 +1244,27 @@ BEGIN
 		table_name,
 		trg_func_name
     );
+
+	-- create refresh procedure
+	execute format($inner_proc$
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
+		LANGUAGE plpgsql
+		AS $inner_proc2$
+			begin
+			    update %I -- table_name
+				set %I = CASE WHEN %I IS NULL THEN %I ELSE %I END, -- column1, column1, column2, column1
+				%I = CASE WHEN %I IS NULL THEN %I ELSE %I END; -- column2, column1, column2, column1
+			end;
+			$inner_proc2$;
+		$inner_proc$
+		, id
+		, table_name
+		, column1, column1, column2, column1
+		, column2, column1, column2, column1
+	);
+
+	-- refresh
+	call pgf_refresh(id);
+
 END;
-
-
-
+$proc$;

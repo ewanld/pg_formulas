@@ -9,7 +9,6 @@ from pathlib import Path
 class TestModule(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        print("setup")
         # Connect to your postgres DB
         cls.conn = psycopg2.connect(
             host=settings.DATABASE["host"],
@@ -43,13 +42,92 @@ class TestModule(unittest.TestCase):
         cls.cur.execute("commit;")
         cls.cur.close()  # Close cursor
         cls.conn.close()  # Close the connection
-    
+
+
+    # --------------------------------------------------------------------
+    # UTILITY METHODS
+    # --------------------------------------------------------------------
 
     # assert that the sql query returns a single row containing a single scalar equal to expected value.
     def assert_sql_equal(self, sql, expected, params=()):
         self.cur.execute(sql, params)
         result = self.cur.fetchone()
         self.assertEqual(list(result.values())[0], expected)
+
+    def fetch_one(self, sql):
+        self.cur.execute(sql)
+        return self.cur.fetchone()
+    
+        # create a test formula in nominal case
+    def create_formula(self, kind, id):
+        match kind:
+            case 'revdate':
+                self.cur.execute("drop table if exists customer cascade;");
+                self.cur.execute("create table customer (id SERIAL PRIMARY KEY, name text, last_modified timestamp default null);")
+                self.cur.execute(f"call pgf_revdate(%s, 'customer', 'last_modified')", (id,))
+
+            case 'count':
+                self.cur.execute("drop table if exists invoice cascade;");
+                self.cur.execute("drop table if exists customer cascade;");
+                self.cur.execute("create table customer (id int PRIMARY KEY, name text, invoice_count int default 0);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
+                self.cur.execute(f"call pgf_count(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
+
+            case 'minmax_table':
+                self.cur.execute("drop table if exists customer cascade;");
+                self.cur.execute("drop table if exists invoice cascade;");
+                self.cur.execute(f"drop table if exists agg cascade;");
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
+                self.cur.execute(f"call pgf_minmax_table(%s, 'invoice', 'id', 'amount', ARRAY['customer_id', 'country'], 'agg');", (id,))
+
+            case 'inheritance_table':
+                self.cur.execute("drop table if exists bike cascade;");
+                self.cur.execute("drop table if exists car cascade;");
+                self.cur.execute("drop table if exists vehicle cascade;");
+                self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
+                self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
+                self.cur.execute("call pgf_inheritance_table(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
+            
+            case 'audit_table':
+                self.cur.execute("drop table if exists customer cascade;")
+                self.cur.execute("create table customer(id serial primary key, name text, value int);")
+                self.cur.execute("call pgf_audit_table(%s, 'customer_events', ARRAY['customer']);", (id,))
+            
+            case 'sync':
+                self.cur.execute("drop table if exists customer cascade;")
+                self.cur.execute("create table customer(id text, customer_name text, name text);")
+                self.cur.execute("call pgf_sync(%s, 'customer', 'name', 'customer_name');", (id,))
+
+            case 'treelevel':
+                self.cur.execute("drop table if exists node cascade;");
+                self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
+                self.cur.execute("call pgf_treelevel(%s, 'node', 'id', 'parent_id', 'level')", (id,))
+
+            case _:
+                raise ValueError(f"Invalid Argument: {kind}")
+        self.cur.execute("commit");
+    
+    # --------------------------------------------------------------------
+    # COMMUN FUNCTIONS TESTS
+    # --------------------------------------------------------------------
+    def test_enable_disable_drop(self):
+        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync']
+        for kind in kinds:
+            id = f'{kind}_id'
+            self.create_formula(kind, id)
+            self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
+            self.cur.execute("commit");
+            self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
+            self.cur.execute("commit");
+            self.cur.execute("call pgf_set_enabled(%s, false)", (id,));
+            self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
+            self.cur.execute("call pgf_drop(%s)", (id,));
+            self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
+            self.cur.execute("commit");
+    
+    # --------------------------------------------------------------------
+    # FORMULA TESTS
+    # --------------------------------------------------------------------
 
     def test_revdate(self):
         formula_id="customer_last_modified"
@@ -133,9 +211,7 @@ class TestModule(unittest.TestCase):
         # self.cur.execute("drop table if exists invoice cascade;");
         # self.cur.execute("drop table if exists customer cascade;");
 
-    def fetch_one(self, sql):
-        self.cur.execute(sql)
-        return self.cur.fetchone()
+
 
     def test_minmax_table(self):
         formula_id = 'customer_invoices_agg'
@@ -299,10 +375,8 @@ class TestModule(unittest.TestCase):
 
 
     def test_treelevel(self):
-        self.cur.execute("drop table if exists node cascade;");
-        self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
-
-        self.cur.execute("call pgf_treelevel('treelevel', 'node', 'id', 'parent_id', 'level')")
+        formula_id = 'treelevel_node'
+        self.create_formula('treelevel', formula_id)
         
         # test : insert root node
         self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")
@@ -459,96 +533,98 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select count(*) from car;", 0)
 
         self.cur.execute("commit");
-
-
-    # create a test formula in nominal case
-    def create_formula(self, kind, id):
-        match kind:
-            case 'revdate':
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("create table customer (id SERIAL PRIMARY KEY, name text, last_modified timestamp default null);")
-                self.cur.execute(f"call pgf_revdate(%s, 'customer', 'last_modified')", (id,))
-
-            case 'count':
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("create table customer (id int PRIMARY KEY, name text, invoice_count int default 0);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
-                self.cur.execute(f"call pgf_count(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
-
-            case 'minmax_table':
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute(f"drop table if exists agg cascade;");
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
-                self.cur.execute(f"call pgf_minmax_table(%s, 'invoice', 'id', 'amount', ARRAY['customer_id', 'country'], 'agg');", (id,))
-
-            case 'inheritance_table':
-                self.cur.execute("drop table if exists bike cascade;");
-                self.cur.execute("drop table if exists car cascade;");
-                self.cur.execute("drop table if exists vehicle cascade;");
-                self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
-                self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
-                self.cur.execute("call pgf_inheritance_table(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
-            
-            case 'audit_table':
-                self.cur.execute("drop table if exists audited cascade;")
-                self.cur.execute("create table audited(id serial primary key, name text, value int);")
-                self.cur.execute("call pgf_audit_table(%s, 'audit_table', ARRAY['audited']);", (id,))
-                
-            case _:
-                raise f"Invalid Argument: {kind}"
-        self.cur.execute("commit");
         
 
-    def test_enable_disable_drop(self):
-        self.test_module.test_enable_disable_drop()
-
-    def test_pgf_audit_table(self):
+    def test_audit_table(self):
         self.create_formula('audit_table', 'audit1')
-        self.conn.commit()
 
-        # Insert row
-        self.cur.execute("insert into audited(name, value) values('row1', 10);")
-        audit_row = self.fetch_one("select * from audit_table order by id desc limit 1;")
+        # test: Insert row
+        self.cur.execute("insert into customer(name, value) values('row1', 10);")
+        audit_row = self.fetch_one("select * from customer_events order by id desc limit 1;")
         self.assertIsNotNone(audit_row)
-        print(audit_row)
         self.assertEqual(audit_row['old_value'], None)
         self.assertEqual(audit_row['new_value'], {'id': 1, 'name': 'row1', 'value': 10})
         self.assertEqual(audit_row['operation'], 'INSERT')
 
-        # Update row
-        self.cur.execute("update audited set value=20 where name='row1';")
-        audit_row = self.fetch_one("select * from audit_table order by id desc limit 1;")
+        # test: Update row
+        self.cur.execute("update customer set value=20 where name='row1';")
+        audit_row = self.fetch_one("select * from customer_events order by id desc limit 1;")
         self.assertIsNotNone(audit_row)
         self.assertEqual(audit_row['old_value'], {'id': 1, 'name': 'row1', 'value': 10})
         self.assertEqual(audit_row['new_value'], {'id': 1, 'name': 'row1', 'value': 20})
         self.assertEqual(audit_row['operation'], 'UPDATE')
 
-        # Delete row
-        self.cur.execute("delete from audited where name='row1';")
-        audit_row = self.fetch_one("select * from audit_table order by id desc limit 1;")
+        # test: Delete row
+        self.cur.execute("delete from customer where name='row1';")
+        audit_row = self.fetch_one("select * from customer_events order by id desc limit 1;")
         self.assertIsNotNone(audit_row)
         self.assertEqual(audit_row['old_value'], {'id': 1, 'name': 'row1', 'value': 20})
         self.assertEqual(audit_row['new_value'], None)
         self.assertEqual(audit_row['operation'], 'DELETE')
         self.conn.commit()
 
-    def test_enable_disable_drop(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'inheritance_table', 'audit_table']
-        for kind in kinds:
-            id = f'{kind}_id'
-            self.create_formula(kind, id)
-            self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
-            self.cur.execute("commit");
-            self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
-            self.cur.execute("commit");
-            self.cur.execute("call pgf_set_enabled(%s, false)", (id,));
-            self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
-            self.cur.execute("call pgf_drop(%s)", (id,));
-            self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
-            self.cur.execute("commit");
+    def test_sync(self):
+        self.create_formula('sync', 'sync1')
+        
+        # test: insert row with old column set, new column null
+        self.cur.execute("insert into customer(id, customer_name) values('1', 'a');")
+        record = self.fetch_one(f"select * from customer where id='1'")
+        self.assertEqual(record['customer_name'], 'a')
+        self.assertEqual(record['name'], 'a')
 
+        # test: insert row with old column null, new column set
+        self.cur.execute("insert into customer(id, name) values('2', 'a');")
+        record = self.fetch_one(f"select * from customer where id='2'")
+        self.assertEqual(record['customer_name'], 'a')
+        self.assertEqual(record['name'], 'a')
+
+        # test: insert row with both columns set
+        self.cur.execute("insert into customer(id, customer_name, name) values('3', 'a', 'b');")
+        record = self.fetch_one(f"select * from customer where id='3'")
+        self.assertEqual(record['customer_name'], 'b')
+        self.assertEqual(record['name'], 'b')
+
+        # test: update row with old column set, new column unchanged
+        self.cur.execute("insert into customer(id, customer_name) values('4', 'a');")
+        self.cur.execute("update customer set customer_name='a2' where id='4'")
+        record = self.fetch_one(f"select * from customer where id='4'")
+        self.assertEqual(record['customer_name'], 'a2')
+        self.assertEqual(record['name'], 'a2')
+
+        # test: update row with new column set, old column unchanged
+        self.cur.execute("insert into customer(id, customer_name) values('4', 'a');")
+        self.cur.execute("update customer set name='a2' where id='4'")
+        record = self.fetch_one(f"select * from customer where id='4'")
+        self.assertEqual(record['customer_name'], 'a2')
+        self.assertEqual(record['name'], 'a2')
+
+        # test: update row with both columns set 
+        self.cur.execute("insert into customer(id, customer_name) values('5', 'a');")
+        self.cur.execute("update customer set customer_name='a2', name='a3' where id='5'")
+        record = self.fetch_one(f"select * from customer where id='5'")
+        self.assertEqual(record['customer_name'], 'a3')
+        self.assertEqual(record['name'], 'a3')
+
+        # test: update row with old column set to null, new column unchanged
+        self.cur.execute("insert into customer(id, customer_name) values('6', 'a');")
+        self.cur.execute("update customer set customer_name=null where id='6'")
+        record = self.fetch_one(f"select * from customer where id='6'")
+        self.assertEqual(record['customer_name'], None)
+        self.assertEqual(record['name'], None)
+
+        # test: update row with new column set to null, old column unchanged
+        self.cur.execute("insert into customer(id, customer_name) values('7', 'a');")
+        self.cur.execute("update customer set name=null where id='7'")
+        record = self.fetch_one(f"select * from customer where id='7'")
+        self.assertEqual(record['customer_name'], None)
+        self.assertEqual(record['name'], None)
+
+        # test: update row with both columns set 
+        self.cur.execute("insert into customer(id, customer_name) values('8', 'a');")
+        self.cur.execute("update customer set customer_name='a2', name=null where id='8'")
+        record = self.fetch_one(f"select * from customer where id='8'")
+        self.assertEqual(record['customer_name'], None)
+        self.assertEqual(record['name'], None)
 if __name__ == '__main__':
     unittest.main()
 

@@ -42,3 +42,6 @@ Functions to implement:
 * pgf_inheritance_table: make pk column name configurable
 * ALL: allow composite PKs
 * ALL: drop trigger if exists before creating them
+* SYNC: add a filter clause
+* SYNC: add a "mapping + inverse_mapping" function (lambda function)
+* JOIN : add a filter clause
