@@ -1,4 +1,4 @@
-# pg_reactive_toolbox.control
+# pg_formulas.control
 comment = 'Postgresql toolbox to make the data more reactive using triggers.'
-default_version = '1.0'
+default_version = '0.9'
 relocatable = true

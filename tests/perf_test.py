@@ -30,7 +30,7 @@ class PerfTestModule(unittest.TestCase):
         
         current_dir = Path(__file__).resolve().parent
 
-        self.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
+        self.execute_sql_file(current_dir / '../pg_formulas--0.9.sql')
 
     def execute_sql_file(self, sql_file):
         with open(sql_file, 'r') as file:

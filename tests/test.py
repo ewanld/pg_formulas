@@ -28,7 +28,7 @@ class TestModule(unittest.TestCase):
         current_dir = Path(__file__).resolve().parent
 
         cls.cur.execute('drop table if exists pgf_metadata;')
-        cls.execute_sql_file(current_dir / '../pg_reactive_toolbox--1.0.sql')
+        cls.execute_sql_file(current_dir / '../pg_formulas--0.9.sql')
         cls.cur.execute("commit;")
 
     @classmethod

@@ -6,7 +6,7 @@
 
 [Overview](#overview) • [Getting Started](#getting-started) • [Formulas list](#formulas) • [API Reference](#api-reference) • [Implementation details](#implementation-details)
 
-  ![Build status](https://github.com/ewanld/pg_reactive_toolbox/actions/workflows/python-app.yml/badge.svg)  
+  ![Build status](https://github.com/ewanld/pg_formulas/actions/workflows/python-app.yml/badge.svg)  
   </h4>
 </p>
 
@@ -25,7 +25,7 @@ Each formula works by creating **one or more triggers** that listen for changes 
 # Getting started
 Load the script in your database:
 ```bash
-psql -U username -d database_name -f pg_reactive_toolbox--1.0.sql
+psql -U username -d database_name -f pg_formulas--0.9.sql
 ```
 
 Create your first formula. The ```COUNT_TABLE``` formula counts table rows:
@@ -115,7 +115,7 @@ PROCEDURE pgrt_revdate(formula_id TEXT, table_name TEXT, column_name TEXT)
 |-------------|------ |
 | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
 | table_name | Name of the table containing the column to update
-| column_name | Name of the column to update. The column must have a date or datetime type and must exist in the table structure (pg_reactive_toolbox does not create the column). 
+| column_name | Name of the column to update. The column must have a date or datetime type and must exist in the table structure (pg_formulas does not create the column). 
 
 ### Example
 From the below table ```customer```, we want to update the ```last_modified``` column automatically when a row is modified.

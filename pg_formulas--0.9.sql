@@ -118,6 +118,25 @@ begin
 end;
 $proc$;
 
+CREATE or replace PROCEDURE pgf_enable (
+	id TEXT
+)
+LANGUAGE plpgsql AS $proc$
+declare
+	args JSONB;
+	kind TEXT;
+	table_name TEXT;
+begin
+	args := pgf_internal_get_metadata(id);
+	kind := args->>'kind';
+
+	if kind = 'revdate' then
+		table_name := args->>'table_name';
+		execute format('ALTER TABLE %I enable TRIGGER "REVDATE_trg_%I";', table_name, id);
+	end if;
+end;
+$proc$;
+
 -------------------------------------------------------------------------------
 -- REVDATE
 --------------------------------------------------------------------------------
@@ -155,21 +174,7 @@ END;
 $proc$;
 
 
-CREATE or replace PROCEDURE pgf_revdate_enable (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-declare
-	args JSONB;
-	table_name TEXT;
-begin
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>'table_name';
-	execute format($$
-		ALTER TABLE %I enable TRIGGER "REVDATE_trg_%I";
-		$$, table_name, id);
-end;
-$proc$;
+
 
 CREATE or replace PROCEDURE REVDATE_disable (
 	id TEXT
