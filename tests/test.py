@@ -490,10 +490,49 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
                 self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
                 self.cur.execute("call pgf_inheritance_table(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
+            
+            case 'audit_table':
+                self.cur.execute("drop table if exists audited cascade;")
+                self.cur.execute("create table audited(id serial primary key, name text, value int);")
+                self.cur.execute("call pgf_audit_table(%s, 'audit_table', ARRAY['audited']);", (id,))
+                
             case _:
                 raise f"Invalid Argument: {kind}"
         self.cur.execute("commit");
         
+
+    def test_enable_disable_drop(self):
+        self.test_module.test_enable_disable_drop()
+
+    def test_pgf_audit_table(self):
+        self.create_formula('audit_table', 'audit1')
+        self.conn.commit()
+
+        # Insert row
+        self.cur.execute("insert into audited(name, value) values('row1', 10);")
+        audit_row = self.fetch_one("select * from audit_table order by id desc limit 1;")
+        self.assertIsNotNone(audit_row)
+        print(audit_row)
+        self.assertEqual(audit_row['old_value'], None)
+        self.assertEqual(audit_row['new_value'], {'id': 1, 'name': 'row1', 'value': 10})
+        self.assertEqual(audit_row['operation'], 'INSERT')
+
+        # Update row
+        self.cur.execute("update audited set value=20 where name='row1';")
+        audit_row = self.fetch_one("select * from audit_table order by id desc limit 1;")
+        self.assertIsNotNone(audit_row)
+        self.assertEqual(audit_row['old_value'], {'id': 1, 'name': 'row1', 'value': 10})
+        self.assertEqual(audit_row['new_value'], {'id': 1, 'name': 'row1', 'value': 20})
+        self.assertEqual(audit_row['operation'], 'UPDATE')
+
+        # Delete row
+        self.cur.execute("delete from audited where name='row1';")
+        audit_row = self.fetch_one("select * from audit_table order by id desc limit 1;")
+        self.assertIsNotNone(audit_row)
+        self.assertEqual(audit_row['old_value'], {'id': 1, 'name': 'row1', 'value': 20})
+        self.assertEqual(audit_row['new_value'], None)
+        self.assertEqual(audit_row['operation'], 'DELETE')
+        self.conn.commit()
 
     def test_enable_disable_drop(self):
         kinds = ['revdate', 'count', 'minmax_table', 'inheritance_table']

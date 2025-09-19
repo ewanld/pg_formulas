@@ -55,7 +55,7 @@ DECLARE
 BEGIN
 	args := _pgf_internal_get_metadata(id);
 	kind := args->>'kind';
-	IF kind = 'revdate' then
+	IF kind = 'revdate' or kind = 'audit_table' then
 		-- no op
 	ELSE
 		execute format('call "_pgf_internal_refresh_%I"();', id);
@@ -1025,6 +1025,127 @@ BEGIN
 
 	call pgf_refresh(id);
 
+END;
+$proc$;
+
+
+--------------------------------------------------------------------------------
+-- AUDIT_TABLE
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE pgf_audit_table(
+    formula_id TEXT,
+    audit_table_name TEXT,
+	audited_table_names TEXT[],
+    options JSONB DEFAULT '{}'::JSONB
+)
+LANGUAGE plpgsql
+AS $proc$
+DECLARE
+    i INT;
+    operation_column_name TEXT;
+    operations_mapping JSONB;
+    old_value_column_name TEXT;
+    new_value_column_name TEXT;
+    op_insert TEXT;
+    op_update TEXT;
+    op_delete TEXT;
+    trg_func_name TEXT;
+    trg_name TEXT;
+BEGIN
+    -- Set default options
+    options := options
+        || jsonb_build_object('operation_column_name', 'operation')
+        || jsonb_build_object('operations_mapping', jsonb_build_object('INSERT', 'INSERT', 'UPDATE', 'UPDATE', 'DELETE', 'DELETE'))
+        || jsonb_build_object('old_value_column_name', 'OLD_VALUE')
+        || jsonb_build_object('new_value_column_name', 'NEW_VALUE');
+
+    operation_column_name := options->>'operation_column_name';
+    operations_mapping := options->'operations_mapping';
+    old_value_column_name := options->>'old_value_column_name';
+    new_value_column_name := options->>'new_value_column_name';
+
+    op_insert := operations_mapping->>'INSERT';
+    op_update := operations_mapping->>'UPDATE';
+    op_delete := operations_mapping->>'DELETE';
+
+    -- Insert metadata
+    call _pgf_internal_insert_metadata(formula_id, 'audit_table', jsonb_build_object(
+        'audited_table_names', audited_table_names,
+        'audit_table_name', audit_table_name,
+        'options', options
+    ));
+
+    -- Create audit table if not exists
+    execute format(
+        'CREATE TABLE IF NOT EXISTS %I (
+            id SERIAL PRIMARY KEY,
+            table_name TEXT,
+            %s TEXT,
+            %s JSONB,
+            %s JSONB,
+            event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );',
+        audit_table_name,
+        operation_column_name,
+        old_value_column_name,
+        new_value_column_name
+    );
+
+    -- Create triggers for each audited table
+    FOR i IN 1..array_length(audited_table_names, 1) LOOP
+        trg_func_name := format('_pgf_internal_audit_table_trgfun_%s_%s', formula_id, audited_table_names[i]);
+        trg_name := format('_pgf_internal_audit_table_trg_%s_%s', formula_id, audited_table_names[i]);
+
+        EXECUTE format($f$
+            CREATE OR REPLACE FUNCTION %I()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF TG_OP = 'INSERT' THEN
+                    INSERT INTO %I(table_name, %s, %s, %s)
+                    VALUES (
+                        TG_TABLE_NAME,
+                        %L,
+                        NULL,
+                        to_jsonb(NEW)
+                    );
+                ELSIF TG_OP = 'UPDATE' THEN
+                    INSERT INTO %I(table_name, %s, %s, %s)
+                    VALUES (
+                        TG_TABLE_NAME,
+                        %L,
+                        to_jsonb(OLD),
+                        to_jsonb(NEW)
+                    );
+                ELSIF TG_OP = 'DELETE' THEN
+                    INSERT INTO %I(table_name, %s, %s, %s)
+                    VALUES (
+                        TG_TABLE_NAME,
+                        %L,
+                        to_jsonb(OLD),
+                        NULL
+                    );
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        $f$,
+            trg_func_name,
+            audit_table_name, operation_column_name, old_value_column_name, new_value_column_name, op_insert,
+            audit_table_name, operation_column_name, old_value_column_name, new_value_column_name, op_update,
+            audit_table_name, operation_column_name, old_value_column_name, new_value_column_name, op_delete
+        );
+
+        EXECUTE format($t$
+            DROP TRIGGER IF EXISTS %I ON %I;
+            CREATE TRIGGER %I
+            AFTER INSERT OR UPDATE OR DELETE ON %I
+            FOR EACH ROW EXECUTE PROCEDURE %I();
+        $t$,
+            trg_name, audited_table_names[i],
+            trg_name, audited_table_names[i],
+            trg_func_name
+        );
+    END LOOP;
 END;
 $proc$;
 
