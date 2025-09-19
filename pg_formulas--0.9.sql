@@ -84,17 +84,22 @@ begin
 	-- drop other objects
 	if kind = 'revdate' then
 		table_name := args->>'table_name';
-		execute format('DROP TRIGGER IF EXISTS "REVDATE_trg_%I" ON %I;', id, table_name);
-		execute format('DROP function if exists "REVDATE_trgfun_%I";', id);
+		execute format('DROP TRIGGER IF EXISTS REVDATE_trg_%I ON %I;', id, table_name);
+		execute format('DROP function if exists REVDATE_trgfun_%I;', id);
+
 	ELSIF kind = 'count' then
-		table_name := args->>'table_name';
-		execute format('drop trigger if exists COUNTLNK_trg_%I on %i', id, table_name);
+		table_name := args->>'linked_table_name';
+		execute format('drop trigger if exists COUNTLNK_trg_%I on %I', id, table_name);
+
 	ELSIF kind = 'minmax_table' then
-		execute format('drop trigger if exists AGG_trg_%i on %I;', id, table_name);
+		table_name := args->>'table_name';
+		execute format('drop trigger if exists AGG_trg_%I on %I;', id, table_name);
+
 	ELSIF kind = 'treelevel' then
 		table_name := args->>'table_name';
 		execute format('DROP TRIGGER IF EXISTS treelevel_trg_%s ON %I;', id, table_name);
     	execute format('DROP FUNCTION IF EXISTS treelevel_func_%s();', id);
+
 	ELSIF kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
 		sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
@@ -118,24 +123,82 @@ begin
 end;
 $proc$;
 
-CREATE or replace PROCEDURE pgf_enable (
-	id TEXT
+CREATE or replace PROCEDURE pgf_set_enabled (
+	id TEXT,
+	enabled boolean
 )
 LANGUAGE plpgsql AS $proc$
 declare
 	args JSONB;
 	kind TEXT;
 	table_name TEXT;
+	base_table_name TEXT;
+    sub_tables TEXT[];
+    sync_direction TEXT;
+	enable_fragment TEXT; -- either 'enable' or 'disable'
 begin
 	args := pgf_internal_get_metadata(id);
 	kind := args->>'kind';
+	enable_fragment := case when enabled then 'enable' else 'disable' end;
 
 	if kind = 'revdate' then
 		table_name := args->>'table_name';
-		execute format('ALTER TABLE %I enable TRIGGER "REVDATE_trg_%I";', table_name, id);
+		execute format('ALTER TABLE %I %s TRIGGER REVDATE_trg_%I;', table_name, enable_fragment, id);
+
+	elsif kind = 'count' then
+		table_name := args->>'linked_table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('alter table %I %s trigger COUNTLNK_trg_%I', table_name, enable_fragment, id);
+		execute format('alter table %I %s trigger COUNTLNK_trg_truncate_%I', table_name, enable_fragment, id);
+
+	elsif kind = 'minmax_table' then
+		table_name := args->>'table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('alter table %I %s trigger AGG_trg_%I;', table_name, enable_fragment, id);
+
+	elsif kind = 'treelevel' then
+		table_name := args->>'table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('ALTER TABLE %I %s TRIGGER treelevel_trg_%s;', table_name, enable_fragment, id);
+
+	elsif kind = 'inheritance_table' then
+		base_table_name := args->>'base_table_name';
+		sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
+		sync_direction := args->>'sync_direction';
+
+		IF sync_direction = 'SUB_TO_BASE' THEN
+			if enabled then
+				FOR i IN 1..array_length(sub_tables, 1) LOOP
+					
+					execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', sub_tables[i]); -- allow reads but not writes
+				END LOOP;
+			end if;
+			FOR i IN 1..array_length(sub_tables, 1) LOOP
+				execute format('alter table %I enable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
+			END LOOP;
+		ELSE
+			if enabled then
+				execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', base_table_name); -- allow reads but not writes
+			end if;
+			FOR i IN 1..array_length(sub_tables, 1) LOOP
+				execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
+			END LOOP;
+		END IF;
+	else
+		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
+
+	call pgf_refresh(id);
 end;
 $proc$;
+
+
 
 -------------------------------------------------------------------------------
 -- REVDATE
@@ -149,7 +212,7 @@ LANGUAGE plpgsql AS $proc$
 BEGIN
 	call pgf_internal_insert_metadata(id, 'revdate', jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
-		CREATE OR REPLACE FUNCTION "REVDATE_trgfun_%I"()
+		CREATE OR REPLACE FUNCTION REVDATE_trgfun_%I()
 		RETURNS TRIGGER AS $inner_trg$
 			BEGIN
 			    NEW.%I := CURRENT_TIMESTAMP;
@@ -161,10 +224,10 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER "REVDATE_trg_%I"
+		CREATE or replace TRIGGER REVDATE_trg_%I
 		before insert or UPDATE ON %I
 		FOR EACH ROW
-		execute procedure "REVDATE_trgfun_%I"();
+		execute procedure REVDATE_trgfun_%I();
 		$trg$, id,
 		table_name,
 		id
@@ -176,21 +239,7 @@ $proc$;
 
 
 
-CREATE or replace PROCEDURE REVDATE_disable (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-declare
-	args JSONB;
-	table_name TEXT;
-begin
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>'table_name';
-	execute format($$
-		ALTER TABLE %I disable TRIGGER "REVDATE_trg_%I";
-		$$, table_name, id);
-end;
-$proc$;
+
 
 --------------------------------------------------------------------------------
 -- COUNT
@@ -214,7 +263,7 @@ BEGIN
 	));
 
 	execute format($fun$
-		CREATE OR REPLACE FUNCTION "COUNTLNK_trgfun_%I"()
+		CREATE OR REPLACE FUNCTION COUNTLNK_trgfun_%I()
 		RETURNS TRIGGER AS $inner_trg$
 			BEGIN
 				IF TG_OP='INSERT' then
@@ -267,7 +316,7 @@ BEGIN
 		CREATE or replace TRIGGER COUNTLNK_trg_%I
 		after delete or insert or update ON %I
 		FOR EACH ROW
-		execute procedure "COUNTLNK_trgfun_%I"();
+		execute procedure COUNTLNK_trgfun_%I();
 		$trg$,
 		id, -- function name
 		linked_table_name,
@@ -275,10 +324,10 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER "COUNTLNK_trg_truncate_%I"
+		CREATE or replace TRIGGER COUNTLNK_trg_truncate_%I
 		after truncate ON %I
 		FOR EACH STATEMENT
-		execute procedure "COUNTLNK_trgfun_%I"();
+		execute procedure COUNTLNK_trgfun_%I();
 		$trg$,
 		id, -- trigger name
 		linked_table_name,
@@ -291,43 +340,8 @@ END;
 $proc$;
 
 
-CREATE or replace PROCEDURE pgf_count_enable (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-declare
-	args JSONB;
-	table_name TEXT;
-begin
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>'table_name';
-	
-	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
-	execute format('alter table %I enable trigger COUNTLNK_trg_%I', table_name, id);
-	execute format('alter table %I enable trigger COUNTLNK_trg_truncate_%I', table_name, id);
-	call pgf_refresh(id);
-end;
-$proc$;
-
-CREATE or replace PROCEDURE pgf_count_disable (
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-declare
-	args JSONB;
-	table_name TEXT;
-begin
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>'table_name';
-	
-	execute format('alter table %I disable trigger COUNTLNK_trg_%I', table_name, id);
-	execute format('alter table %I disable trigger COUNTLNK_trg_truncate_%I', table_name, id);
-end;
-$proc$;
-
-
 --------------------------------------------------------------------------------
--- MINMAX
+-- MINMAX_TABLE
 --------------------------------------------------------------------------------
 CREATE or replace PROCEDURE pgf_minmax_table (
 	id text,
@@ -627,38 +641,6 @@ BEGIN
 END;
 $proc$;
 
-create or replace procedure pgf_minmax_table_enable(
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-DECLARE
-	table_name TEXT;
-	args JSONB;
-BEGIN
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>base_table_name;
-
-	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
-	execute format('alter table %I enable trigger AGG_trg_%i;', table_name, id);
-	call pgf_refresh(id);
-END;
-$proc$;
-
-create or replace procedure pgf_minmax_table_disable(
-	id TEXT
-)
-LANGUAGE plpgsql AS $proc$
-DECLARE
-	table_name TEXT;
-	args JSONB;
-BEGIN
-	args := pgf_internal_get_metadata(id);
-	table_name := args->>base_table_name;
-	
-	execute format('alter table %I disable trigger AGG_trg_%i;', table_name, id);
-END;
-$proc$;
-
 
 --------------------------------------------------------------------------------
 -- TREELEVEL
@@ -813,33 +795,6 @@ BEGIN
     -- Full refresh: update all levels in the table
 	call pgf_refresh(id);
 
-END;
-$proc$;
-
--- Enable/disable/drop/refresh procedures for TREELEVEL
-
-CREATE OR REPLACE PROCEDURE pgf_treelevel_enable(
-    id TEXT,
-    table_name TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-    trg_name TEXT := format('treelevel_trg_%s', id);
-    sql TEXT;
-BEGIN
-	execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
-	execute format('ALTER TABLE %I ENABLE TRIGGER %I;', table_name, trg_name);
-	call pgf_refresh(id);
-END;
-$proc$;
-
-CREATE OR REPLACE PROCEDURE pgf_treelevel_disable(
-    id TEXT,
-    table_name TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-    trg_name TEXT := format('treelevel_trg_%s', id);
-BEGIN
-    execute format('ALTER TABLE %I DISABLE TRIGGER %I;', table_name, trg_name);
 END;
 $proc$;
 
@@ -1066,61 +1021,5 @@ BEGIN
 END;
 $proc$;
 
-CREATE OR REPLACE PROCEDURE pgf_inheritance_table_enable(
-    id TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-	base_table_name TEXT;
-    sub_tables TEXT[];
-    sync_direction TEXT DEFAULT 'BASE_TO_SUB';
-	args JSONB;
-BEGIN
-	args := pgf_internal_get_metadata(id);
-	base_table_name := args->>base_table_name;
-	sub_tables := (args->>sub_tables)::text[];
-	sync_direction := args->>sync_direction;
 
-	IF sync_direction = 'SUB_TO_BASE' THEN
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', sub_tables[i]); -- allow reads but not writes
-		END LOOP;
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('alter table %I enable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
-		END LOOP;
-	ELSE
-		execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', base_table_name); -- allow reads but not writes
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
-		END LOOP;
-	END IF;
-	call pgf_refresh(id);
-END;
-$proc$;
-
-
-CREATE OR REPLACE PROCEDURE pgf_inheritance_table_disable(
-    id TEXT
-) LANGUAGE plpgsql AS $proc$
-DECLARE
-	base_table_name TEXT;
-    sub_tables TEXT[];
-    sync_direction TEXT DEFAULT 'BASE_TO_SUB';
-	args JSONB;
-BEGIN
-	args := pgf_internal_get_metadata(id);
-	base_table_name := args->>base_table_name;
-	sub_tables := (args->>sub_tables)::text[];
-	sync_direction := args->>sync_direction;
-
-	IF sync_direction = 'SUB_TO_BASE' THEN
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('alter table %I disable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
-		END LOOP;
-	ELSE
-		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('alter table %I disable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
-		END LOOP;
-	END IF;
-END;
-$proc$;
 
