@@ -2,7 +2,7 @@
 -- INTERNAL/UTILITY FUNCTIONS
 --------------------------------------------------------------------------------
 -- Insert a row inot the metadata table. args is a JSON object containing procedure arguments.
-CREATE or replace PROCEDURE pgf_internal_insert_metadata (
+CREATE or replace PROCEDURE _pgf_internal_insert_metadata (
 	id TEXT,
 	kind TEXT,
 	args JSONB
@@ -14,17 +14,17 @@ BEGIN
 END;
 $proc$;
 
-CREATE or replace PROCEDURE pgf_internal_delete_metadata (
+CREATE or replace PROCEDURE _pgf_internal_delete_metadata (
 	id TEXT
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	delete from pgf_metadata m where m.id = pgf_internal_delete_metadata.id;
+	delete from pgf_metadata m where m.id = _pgf_internal_delete_metadata.id;
 END;
 $proc$;
 
 -- Get a row from the metadata table. args is a JSON object containing procedure arguments + a special attribute 'kind".
-CREATE or replace FUNCTION pgf_internal_get_metadata (
+CREATE or replace FUNCTION _pgf_internal_get_metadata (
 	id TEXT
 )
 RETURNS JSONB
@@ -33,13 +33,13 @@ DECLARE
 	res JSONB;
 BEGIN
 	CREATE TABLE IF NOT EXISTS pgf_metadata(id TEXT primary key, kind TEXT, args JSONB, created_at TIMESTAMP);
-	select args || jsonb_build_object('kind', kind) INTO res from pgf_metadata m where m.id = pgf_internal_get_metadata.id;
+	select args || jsonb_build_object('kind', kind) INTO res from pgf_metadata m where m.id = _pgf_internal_get_metadata.id;
 	return res;
 END;
 $proc$;
 
 
-CREATE OR REPLACE FUNCTION pgf_internal_jsonb_to_text_array(j jsonb)
+CREATE OR REPLACE FUNCTION _pgf_internal_jsonb_to_text_array(j jsonb)
 RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
     SELECT array_agg(value)
     FROM jsonb_array_elements_text(j) AS t(value);
@@ -53,7 +53,7 @@ DECLARE
 	args JSONB;
 	kind TEXT;
 BEGIN
-	args := pgf_internal_get_metadata(id);
+	args := _pgf_internal_get_metadata(id);
 	kind := args->>'kind';
 	IF kind = 'revdate' then
 		-- no op
@@ -75,7 +75,7 @@ declare
     sub_tables TEXT[];
     sync_direction TEXT;
 begin
-	args := pgf_internal_get_metadata(id);
+	args := _pgf_internal_get_metadata(id);
 	kind := args->>'kind';
 	
 	-- drop refresh procedure
@@ -102,7 +102,7 @@ begin
 
 	ELSIF kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
-		sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
+		sub_tables := _pgf_internal_jsonb_to_text_array(args->'sub_tables');
 		sync_direction := args->>'sync_direction';
 
 		IF sync_direction = 'SUB_TO_BASE' THEN
@@ -118,7 +118,7 @@ begin
 		END IF;
 	end if;
 
-	call pgf_internal_delete_metadata(id);
+	call _pgf_internal_delete_metadata(id);
 
 end;
 $proc$;
@@ -137,7 +137,7 @@ declare
     sync_direction TEXT;
 	enable_fragment TEXT; -- either 'enable' or 'disable'
 begin
-	args := pgf_internal_get_metadata(id);
+	args := _pgf_internal_get_metadata(id);
 	kind := args->>'kind';
 	enable_fragment := case when enabled then 'enable' else 'disable' end;
 
@@ -169,7 +169,7 @@ begin
 
 	elsif kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
-		sub_tables := pgf_internal_jsonb_to_text_array(args->'sub_tables');
+		sub_tables := _pgf_internal_jsonb_to_text_array(args->'sub_tables');
 		sync_direction := args->>'sync_direction';
 
 		IF sync_direction = 'SUB_TO_BASE' THEN
@@ -210,7 +210,7 @@ CREATE or replace PROCEDURE pgf_revdate (
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	call pgf_internal_insert_metadata(id, 'revdate', jsonb_build_object('table_name', table_name, 'column_name', column_name));
+	call _pgf_internal_insert_metadata(id, 'revdate', jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
 		CREATE OR REPLACE FUNCTION REVDATE_trgfun_%I()
 		RETURNS TRIGGER AS $inner_trg$
@@ -254,7 +254,7 @@ CREATE or replace PROCEDURE pgf_count (
 )
 LANGUAGE plpgsql AS $proc$
 BEGIN
-	call pgf_internal_insert_metadata(id, 'count', jsonb_build_object(
+	call _pgf_internal_insert_metadata(id, 'count', jsonb_build_object(
 		'base_table_name', base_table_name,
 		'base_pk', base_pk,
 		'base_count_column', base_count_column,
@@ -369,7 +369,7 @@ BEGIN
 		agg_table := 'agg_' || id;
 	END IF;
 
-	call pgf_internal_insert_metadata(id, 'minmax_table', jsonb_build_object(
+	call _pgf_internal_insert_metadata(id, 'minmax_table', jsonb_build_object(
 		'table_name', table_name,
 		'pk', pk,
 		'aggregate_column', aggregate_column,
@@ -663,7 +663,7 @@ DECLARE
     trg_func_name TEXT := format('treelevel_func_%s', id);
     trg_name TEXT := format('treelevel_trg_%s', id);
 BEGIN
-	call pgf_internal_insert_metadata(id, 'treelevel', jsonb_build_object(
+	call _pgf_internal_insert_metadata(id, 'treelevel', jsonb_build_object(
 		'table_name', table_name,
 		'pk_column', pk_column,
 		'parent_column', parent_column,
@@ -806,9 +806,8 @@ CREATE OR REPLACE PROCEDURE pgf_inheritance_table(
     id TEXT,
     base_table_name TEXT,
     sub_tables TEXT[],
-    sync_direction TEXT DEFAULT 'BASE_TO_SUB',
-	discriminator_column TEXT DEFAULT 'discriminator',
-	discriminator_values TEXT[] DEFAULT NULL
+    sync_direction TEXT,
+	options JSONB DEFAULT '{}'::JSONB
 )
 LANGUAGE plpgsql
 AS $proc$
@@ -824,17 +823,22 @@ DECLARE
     insert_cols TEXT;
     select_expr TEXT;
 	sql TEXT;
+	discriminator_column TEXT;
+	discriminator_values TEXT[];
 BEGIN
-	IF discriminator_values is null then
-		discriminator_values := sub_tables;
-	end if;
+	-- Apply default values to options
+	options := options || jsonb_build_object(
+        'discriminator_column', 'discriminator',
+		'discriminator_values', sub_tables
+    );
+	discriminator_column := options->>'discriminator_column';
+	discriminator_values := _pgf_internal_jsonb_to_text_array(options->'discriminator_values');
 
-	call pgf_internal_insert_metadata(id, 'inheritance_table', jsonb_build_object(
+	call _pgf_internal_insert_metadata(id, 'inheritance_table', jsonb_build_object(
 		'base_table_name', base_table_name,
 		'sub_tables', sub_tables,
 		'sync_direction', sync_direction,
-		'discriminator_column', discriminator_column,
-		'discriminator_values', discriminator_values
+		'options', options
 	));
 
     -- Gather all columns from all sub-tables (excluding duplicates)

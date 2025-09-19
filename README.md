@@ -112,9 +112,9 @@ PROCEDURE pgf_revdate(formula_id TEXT, table_name TEXT, column_name TEXT)
 
 | Argument         | Description |
 |-------------|------ |
-| formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
-| table_name | Name of the table containing the column to update
-| column_name | Name of the column to update. The column must have a date or datetime type and must exist in the table structure (pg_formulas does not create the column). 
+| ```formula_id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```table_name``` | Name of the table containing the column to update
+| ```column_name``` | Name of the column to update. The column must have a date or datetime type and must exist in the table structure (pg_formulas does not create the column). 
 
 ### Example
 From the below table ```customer```, we want to update the ```last_modified``` column automatically when a row is modified.
@@ -152,6 +152,7 @@ TODO
 
 ## INHERITANCE_TABLE formula
 **_Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables._**
+
 Synchronization between the base (union) table an sub-tables is unidirectional but can go any way (changes to the base table are propagated to sub-tables, or changes to sub-tables are propagated to the base table).
 
 Syntax:
@@ -159,20 +160,29 @@ Syntax:
 PROCEDURE pgf_inheritance_table (
     id TEXT,
     base_table_name TEXT,
-    discriminator_column TEXT DEFAULT 'discriminator',
     sub_tables TEXT[]
-    sync_direction TEXT DEFAULT 'BASE_TO_SUB'
+    sync_direction TEXT DEFAULT 'BASE_TO_SUB',
+    options JSONB DEFAULT '{
+        "discriminator_column": "discriminator"
+        "discriminator_values": NULL
+    }'::jsonb
 )
 
 ```
 | Argument         | Description |
 |-------------|------ |
-| formula_id | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
-| base_table_name | Name of the base (union) table. This table is created automatically on function call.
-| discriminator_column | Name of the discriminator column, i.e the column from the base table that helps distinguish from which sub-table the row is from. (Optional. Default value : 'discriminator').
-| sub_tables | Name of tables to be kept in sync with the base table.
-| discriminator_values | Name of the discriminator values for each of the sub tables. The length of the array should be the same as the length of the ```sub_tables``` array, and the items should be in the same order. (Optional ; if not set, the discriminator values are the sub-table names).
-| sync_direction | Allowed values: 'BASE_TO_SUB' to propagate changes unidirectionally from the base table to the sub-tables ; 'BASE_TO_SUB' to propagate changes unidirectionally from the sub-tables table to the base table. 
+| ```formula_id``` | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```base_table_name``` | Name of the base (union) table. This table is created automatically on function call.
+| ```sub_tables``` | Name of tables to be kept in sync with the base table.
+| ```sync_direction``` | Allowed values: ```'BASE_TO_SUB'``` to propagate changes unidirectionally from the base table to the sub-tables ; ```'SUB_TO_BASE'``` to propagate changes unidirectionally from the sub-tables table to the base table. 
+| ```options``` | Additional optional arguments, passed as a JSONB object (see available options below).
+
+Additional options :
+| JSONB field | Default value | Description |
+|-------------|---------------|-------------|
+| ```discriminator_column``` | ```'discriminator'``` | Name of the discriminator column, i.e the column from the base table that helps distinguish from which sub-table the row is from.
+| ```discriminator_values``` | Sub-table names| Name of the discriminator values for each of the sub tables. The length of the array should be the same as the length of the ```sub_tables``` array, and the items should be in the same order. If not set, the discriminator values are the sub-table names.
+
 
 Example:
 Given the following two tables ```bike``` and ```car```, we would like to synchronize data to a ```vehicle``` table cointaining data from both tables:
