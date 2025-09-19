@@ -271,3 +271,5 @@ This will :
 
 # Implementation details
 A metadata table named ```pgf_metadata``` is created to track all formula declarations.
+All objects (procedures, functions, triggers etc) starting with "_pgf_internal" are part of the internal implementation
+and should not be manipulated directly ; use public API instead.
