@@ -128,6 +128,11 @@ begin
 			execute format('DROP TRIGGER IF EXISTS _pgf_internal_audit_table_trg_%s_%s ON %I;', id, sub_tables[i], sub_tables[i]);
 			execute format('DROP FUNCTION IF EXISTS _pgf_internal_audit_table_trgfun_%s_%s();', id, sub_tables[i]);
 		END LOOP;
+
+	ELSIF kind = 'sync' then
+		table_name := args->>'table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_sync_trg_%I ON %I;', id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_sync_trgfun_%I();', id);
 	end if;
 
 	call _pgf_internal_delete_metadata(id);
@@ -208,6 +213,11 @@ begin
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
 			execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_audit_table_trg_%s_%s;', sub_tables[i], enable_fragment, id, sub_tables[i]);
 		END LOOP;
+
+	elsif kind = 'SYNC' then
+		table_name := args->>'table_name';
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_sync_trg_%I;', table_name, enable_fragment, id);
+	
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
