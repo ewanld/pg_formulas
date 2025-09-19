@@ -41,4 +41,4 @@ Functions to implement:
 
 * pgf_inheritance_table: make pk column name configurable
 * ALL: allow composite PKs
-* 
+* ALL: drop trigger if exists before creating them
