@@ -58,7 +58,7 @@ BEGIN
 	IF kind = 'revdate' then
 		-- no op
 	ELSE
-		execute format('call "pgf_%I_refresh_%I"();', kind, id);
+		execute format('call "_pgf_internal_refresh_%I"();', id);
 	end IF;
 END;
 $proc$;
@@ -79,21 +79,24 @@ begin
 	kind := args->>'kind';
 	
 	-- drop refresh procedure
-	execute format('drop procedure if exists pgf_%I_refresh_%I', kind, id);
+	execute format('drop procedure if exists _pgf_internal_refresh_%I', kind, id);
 
 	-- drop other objects
 	if kind = 'revdate' then
 		table_name := args->>'table_name';
 		execute format('DROP TRIGGER IF EXISTS REVDATE_trg_%I ON %I;', id, table_name);
-		execute format('DROP function if exists REVDATE_trgfun_%I;', id);
+		execute format('DROP function if exists REVDATE_trgfun_%I();', id);
 
 	ELSIF kind = 'count' then
 		table_name := args->>'linked_table_name';
 		execute format('drop trigger if exists COUNTLNK_trg_%I on %I', id, table_name);
+		execute format('drop trigger if exists COUNTLNK_trg_truncate_%I on %I', id, table_name);
+		execute format('drop function if exists COUNTLNK_trgfun_%I()', id);
 
 	ELSIF kind = 'minmax_table' then
 		table_name := args->>'table_name';
 		execute format('drop trigger if exists AGG_trg_%I on %I;', id, table_name);
+		execute format('drop function if exists AGG_trgfun_%I()', id);
 
 	ELSIF kind = 'treelevel' then
 		table_name := args->>'table_name';
@@ -290,7 +293,7 @@ BEGIN
 		);
 
 	execute format($inner_proc$
-		CREATE or replace PROCEDURE "pgf_count_refresh_%I"()
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"()
 		LANGUAGE plpgsql
 		AS $inner_proc2$
 			begin
@@ -590,7 +593,7 @@ BEGIN
 	);
 
 	execute format($inner_proc$
-		CREATE or replace PROCEDURE pgf_minmax_table_refresh_%I() -- id
+		CREATE or replace PROCEDURE _pgf_internal_refresh_%I() -- id
 		LANGUAGE plpgsql
 		AS $body$
 			begin
@@ -750,7 +753,7 @@ BEGIN
     );
 
 	execute format($inner_proc$
-		CREATE OR REPLACE PROCEDURE pgf_treelevel_refresh_%I() -- id
+		CREATE OR REPLACE PROCEDURE _pgf_internal_refresh_%I() -- id
 		LANGUAGE plpgsql AS $inner_proc2$
 		BEGIN
 			-- Full refresh: update all levels in the table
@@ -895,7 +898,7 @@ BEGIN
     END LOOP;
 
 	execute format($inner_proc$
-		CREATE OR REPLACE PROCEDURE pgf_inheritance_table_refresh_%I() -- id
+		CREATE OR REPLACE PROCEDURE _pgf_internal_refresh_%I() -- id
 		LANGUAGE plpgsql AS $inner_proc2$
 		BEGIN
 			%s -- sql
