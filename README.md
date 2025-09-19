@@ -269,7 +269,72 @@ This will :
 
 > **NB**: to synchronize changes from ```bike``` and ```car``` to ```vehicle``` instead, use the argument 'SUB_TO_BASE'.
 
+# AUDIT_TABLE formula
+**_Populate a history (audit) table._**
+
+This formula creates an audit table allowing to track insert, update and delete events across one or several tables.
+Each row from the audit table corresponds to a single insert, update or delete operation on a single row.
+The date of the row before and after the operation are both stored in the audit table.
+### Syntax
+
+```sql
+PROCEDURE pgf_audit_table(
+    formula_id TEXT,
+    audit_table_name TEXT,
+    audited_table_names TEXT[],
+    options JSONB DEFAULT '{
+        "operation_column_name": "operation",
+        operations_mapping: {
+            "INSERT": "INSERT"
+            "UPDATE": "UPDATE"
+            "DELETE": "DELETE"
+        },
+        "old_value_column_name": "OLD_VALUE",
+        "new_value_column_name": "NEW_VALUE",
+    }'::JSONB
+)
+```
+
+| Argument         | Description |
+|-------------|------ |
+| ```formula_id``` | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```audited_table_names``` | Array of table names to audit (tracked tables).
+| ```audit_table_name``` | Name of the table storing audit (tracking) events.
+| ```options``` | Additional optional arguments, passed as a JSONB object (see available options below).
+
+Additional options :
+| JSONB field | Default value | Description |
+|-------------|---------------|-------------|
+| ```operation_column_name``` | ```'operation'``` | Name of column from the audit table storing the operation type (insert, update or delete). 
+| ```operations_mapping``` | | a JSONB sub-object allowing to remap operation type names. Default names are: INSERT, UPDATE, DELETE. To remap an operation name, add it to the JSONB object e.g ```{ "UPDATE": "This row has been updated" }```. |
+|```old_value_column_name``` | ```'OLD_VALUE'``` | The name of the column containing the state of the row before the change event. |
+|```new_value_column_name``` | ```'NEW_VALUE'``` | The name of the column containing the state of the row after the change event. |
+
+### Example
+
+TODO
+
+## SYNC formula
+**_Synchronize two fields from the same table._**
+
+### Syntax
+```sql
+PROCEDURE pgf_sync(
+    formula_id TEXT,
+    table_name TEXT,
+    column1 TEXT,
+    column2 TEXT
+);
+```
+
+Given the table table_name:
+* For insert operations, when ```column1``` is set to a non-null value but not ```column2```, ```column2``` is set to ```column1```'s value as well. (and vice versa). When both columns are set, ```column1``` takes precedence : ```column2``` is set to ```column1```'s value.
+* For update operations, when ```column1```'s value is modified but not ```column2```, ```column2``` is set to ```column1```'s value (and vice versa). In particular, if ```column1```'s value is modified to ```NULL```, ```column2```'s value is modified to ```NULL``` as well. (and vice versa). When both columns are modified, ```column1``` takes precedence : ```column2``` is set to ```column1```'s value.
+
+This formula is particularly useful for renaming a column in zero-downtime migration scenarios, as it allows both the old version (which updates the original column) and the new version (which updates the renamed column) to run concurrently.
+
+
 # Implementation details
 A metadata table named ```pgf_metadata``` is created to track all formula declarations.
-All objects (procedures, functions, triggers etc) starting with "_pgf_internal" are part of the internal implementation
-and should not be manipulated directly ; use public API instead.
+
+All objects (procedures, functions, triggers etc) starting with "_pgf_internal" are part of the internal implementation and should not be manipulated directly ; use public API instead.
