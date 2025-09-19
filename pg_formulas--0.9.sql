@@ -119,6 +119,15 @@ begin
 			END LOOP;
 			execute format('drop function if exists _pgf_internal_inheritance_table_trgfun_%s_%s; ', id, base_table_name);
 		END IF;
+
+	ELSIF kind = 'audit_table' then
+		sub_tables := _pgf_internal_jsonb_to_text_array(args->'audited_table_names');
+
+		-- Drop triggers and trigger functions for each audited table
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('DROP TRIGGER IF EXISTS _pgf_internal_audit_table_trg_%s_%s ON %I;', id, sub_tables[i], sub_tables[i]);
+			execute format('DROP FUNCTION IF EXISTS _pgf_internal_audit_table_trgfun_%s_%s();', id, sub_tables[i]);
+		END LOOP;
 	end if;
 
 	call _pgf_internal_delete_metadata(id);
@@ -728,7 +737,8 @@ BEGIN
 	  trg_func_name
 	, parent_column
 	, level_column
-	, table_name, pk_column, parent_column
+	, table_name
+	, pk_column, parent_column
 	, level_column
 	, level_column
 	, pk_column
@@ -1154,6 +1164,75 @@ BEGIN
     END LOOP;
 END;
 $proc$;
+
+--------------------------------------------------------------------------------
+-- SYNC
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE pgf_sync(
+    formula_id TEXT,
+    table_name TEXT,
+    column1 TEXT,
+    column2 TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+DECLARE
+    trg_func_name TEXT := format('_pgf_internal_sync_trgfun_%s', formula_id);
+    trg_name TEXT := format('_pgf_internal_sync_trg_%s', formula_id);
+BEGIN
+    -- Insert metadata
+    call _pgf_internal_insert_metadata(formula_id, 'sync', jsonb_build_object(
+        'table_name', table_name,
+        'column1', column1,
+        'column2', column2
+    ));
+
+    -- Create trigger function
+    EXECUTE format($f$
+        CREATE OR REPLACE FUNCTION %I() -- trg_func_name
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF TG_OP = 'INSERT' THEN
+                IF NEW.%I IS NOT NULL THEN -- column1
+                    NEW.%I := NEW.%I; -- column2, column1
+                ELSE
+                    NEW.%I := NEW.%I; -- column1, column2
+                END IF;
+            ELSIF TG_OP = 'UPDATE' THEN
+                IF (OLD.%I IS DISTINCT FROM NEW.%I) THEN -- column1, column1
+                    NEW.%I := NEW.%I; -- column2, column1
+                ELSIF (OLD.%I IS DISTINCT FROM NEW.%I) THEN -- column2, column2
+                    NEW.%I := NEW.%I; -- column1, column2
+                END IF;
+            END IF;
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+    $f$,
+		, trg_func_name
+		, column1
+		, column2, column1
+		, column1, column2
+		, column1, column1
+		, column2, column1
+		, column2, column2
+		, column1, column2
+    );
+
+    -- Drop existing trigger if exists
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
+
+    -- Create trigger
+    EXECUTE format($trg$
+        CREATE TRIGGER %I -- trg_name
+        BEFORE INSERT OR UPDATE ON %I -- table_name
+        FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
+    $trg$,
+        trg_name,
+		table_name,
+		trg_func_name
+    );
+END;
 
 
 

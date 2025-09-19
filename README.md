@@ -77,7 +77,10 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
   * [UNION_TABLE](#UNION_TABLE): Compute the union of multiple tables into one.
   * [INTERSECT_TABLE](#INTERSECT_TABLE): Compute the intersection of multiple tables into one.
   * [EXCEPT_TABLE](#EXCEPT_TABLE): Compute the difference of two tables (```A EXCEPT B```).
+
+**Synchronize database fields:**
   * [JOIN](#JOIN): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table.
+  * [SYNC](#SYNC): Synchronize two columns values from the same table.
 
 **Auditing changes:**
   * [REVDATE](#REVDATE): Automatically update a 'last_modified' column.
@@ -107,7 +110,11 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 ### Syntax
 ```sql
-PROCEDURE pgf_revdate(formula_id TEXT, table_name TEXT, column_name TEXT)
+PROCEDURE pgf_revdate(
+    formula_id TEXT,
+    table_name TEXT,
+    column_name TEXT
+)
 ```
 
 | Argument         | Description |
@@ -155,7 +162,7 @@ TODO
 
 Synchronization between the base (union) table an sub-tables is unidirectional but can go any way (changes to the base table are propagated to sub-tables, or changes to sub-tables are propagated to the base table).
 
-Syntax:
+### Syntax
 ```sql
 PROCEDURE pgf_inheritance_table (
     id TEXT,
@@ -167,8 +174,8 @@ PROCEDURE pgf_inheritance_table (
         "discriminator_values": NULL
     }'::jsonb
 )
-
 ```
+
 | Argument         | Description |
 |-------------|------ |
 | ```formula_id``` | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
@@ -184,7 +191,7 @@ Additional options :
 | ```discriminator_values``` | Sub-table names| Name of the discriminator values for each of the sub tables. The length of the array should be the same as the length of the ```sub_tables``` array, and the items should be in the same order. If not set, the discriminator values are the sub-table names.
 
 
-Example:
+### Example
 Given the following two tables ```bike``` and ```car```, we would like to synchronize data to a ```vehicle``` table cointaining data from both tables:
 
 <table>
