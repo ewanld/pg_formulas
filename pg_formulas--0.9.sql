@@ -84,24 +84,24 @@ begin
 	-- drop other objects
 	if kind = 'revdate' then
 		table_name := args->>'table_name';
-		execute format('DROP TRIGGER IF EXISTS REVDATE_trg_%I ON %I;', id, table_name);
-		execute format('DROP function if exists REVDATE_trgfun_%I();', id);
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_revdate_trg_%I ON %I;', id, table_name);
+		execute format('DROP function if exists _pgf_internal_revdate_trgfun_%I();', id);
 
 	ELSIF kind = 'count' then
 		table_name := args->>'linked_table_name';
-		execute format('drop trigger if exists COUNTLNK_trg_%I on %I', id, table_name);
-		execute format('drop trigger if exists COUNTLNK_trg_truncate_%I on %I', id, table_name);
-		execute format('drop function if exists COUNTLNK_trgfun_%I()', id);
+		execute format('drop trigger if exists _pgf_internal_count_trg_%I on %I', id, table_name);
+		execute format('drop trigger if exists _pgf_internal_count_trg_truncate_%I on %I', id, table_name);
+		execute format('drop function if exists _pgf_internal_count_trgfun_%I()', id);
 
 	ELSIF kind = 'minmax_table' then
 		table_name := args->>'table_name';
-		execute format('drop trigger if exists AGG_trg_%I on %I;', id, table_name);
-		execute format('drop function if exists AGG_trgfun_%I()', id);
+		execute format('drop trigger if exists _pgf_internal_minmax_table_trg_%I on %I;', id, table_name);
+		execute format('drop function if exists _pgf_internal_minmax_table_trgfun_%I()', id);
 
 	ELSIF kind = 'treelevel' then
 		table_name := args->>'table_name';
-		execute format('DROP TRIGGER IF EXISTS treelevel_trg_%s ON %I;', id, table_name);
-    	execute format('DROP FUNCTION IF EXISTS treelevel_func_%s();', id);
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_treelevel_trg_%s ON %I;', id, table_name);
+    	execute format('DROP FUNCTION IF EXISTS _pgf_internal_treelevel_trgfun_%s();', id);
 
 	ELSIF kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
@@ -110,14 +110,14 @@ begin
 
 		IF sync_direction = 'SUB_TO_BASE' THEN
 			FOR i IN 1..array_length(sub_tables, 1) LOOP
-				execute format('drop trigger if exists UNION_sub_to_base_trg_%s_%s on %I; ', id, sub_tables[i], sub_tables[i]);
-				execute format('drop function if exists UNION_sub_to_base_trgfun_%s_%s; ', id, sub_tables[i]);
+				execute format('drop trigger if exists _pgf_internal_inheritance_table_trg_%s_%s on %I; ', id, sub_tables[i], sub_tables[i]);
+				execute format('drop function if exists _pgf_internal_inheritance_table_trgfun_%s_%s; ', id, sub_tables[i]);
 			END LOOP;
 		ELSE
 			FOR i IN 1..array_length(sub_tables, 1) LOOP
-				execute format('drop trigger if exists UNION_base_to_sub_trg_%s_%s on %I; ', id, sub_tables[i], base_table_name);
-				execute format('drop function if exists UNION_base_to_sub_trgfun_%s_%s; ', id, base_table_name);
+				execute format('drop trigger if exists _pgf_internal_inheritance_table_trg_%s_%s on %I; ', id, sub_tables[i], base_table_name);
 			END LOOP;
+			execute format('drop function if exists _pgf_internal_inheritance_table_trgfun_%s_%s; ', id, base_table_name);
 		END IF;
 	end if;
 
@@ -146,29 +146,29 @@ begin
 
 	if kind = 'revdate' then
 		table_name := args->>'table_name';
-		execute format('ALTER TABLE %I %s TRIGGER REVDATE_trg_%I;', table_name, enable_fragment, id);
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_revdate_trg_%I;', table_name, enable_fragment, id);
 
 	elsif kind = 'count' then
 		table_name := args->>'linked_table_name';
 		if enabled then
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
-		execute format('alter table %I %s trigger COUNTLNK_trg_%I', table_name, enable_fragment, id);
-		execute format('alter table %I %s trigger COUNTLNK_trg_truncate_%I', table_name, enable_fragment, id);
+		execute format('alter table %I %s trigger _pgf_internal_count_trg_%I', table_name, enable_fragment, id);
+		execute format('alter table %I %s trigger _pgf_internal_count_trg_truncate_%I', table_name, enable_fragment, id);
 
 	elsif kind = 'minmax_table' then
 		table_name := args->>'table_name';
 		if enabled then
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
-		execute format('alter table %I %s trigger AGG_trg_%I;', table_name, enable_fragment, id);
+		execute format('alter table %I %s trigger _pgf_internal_minmax_table_trg_%I;', table_name, enable_fragment, id);
 
 	elsif kind = 'treelevel' then
 		table_name := args->>'table_name';
 		if enabled then
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
-		execute format('ALTER TABLE %I %s TRIGGER treelevel_trg_%s;', table_name, enable_fragment, id);
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_treelevel_trg_%s;', table_name, enable_fragment, id);
 
 	elsif kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
@@ -183,14 +183,14 @@ begin
 				END LOOP;
 			end if;
 			FOR i IN 1..array_length(sub_tables, 1) LOOP
-				execute format('alter table %I enable trigger UNION_sub_to_base_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
+				execute format('alter table %I enable trigger _pgf_internal_inheritance_table_trg_%s_%s;', sub_tables[i], id, sub_tables[i]);
 			END LOOP;
 		ELSE
 			if enabled then
 				execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', base_table_name); -- allow reads but not writes
 			end if;
 			FOR i IN 1..array_length(sub_tables, 1) LOOP
-				execute format('alter table %I enable trigger UNION_base_to_sub_trg_%s_%s;', base_table_name, id, sub_tables[i]);
+				execute format('alter table %I enable trigger _pgf_internal_inheritance_table_trg_%s_%s;', base_table_name, id, sub_tables[i]);
 			END LOOP;
 		END IF;
 	else
@@ -215,7 +215,7 @@ LANGUAGE plpgsql AS $proc$
 BEGIN
 	call _pgf_internal_insert_metadata(id, 'revdate', jsonb_build_object('table_name', table_name, 'column_name', column_name));
 	execute format($fun$
-		CREATE OR REPLACE FUNCTION REVDATE_trgfun_%I()
+		CREATE OR REPLACE FUNCTION _pgf_internal_revdate_trgfun_%I()
 		RETURNS TRIGGER AS $inner_trg$
 			BEGIN
 			    NEW.%I := CURRENT_TIMESTAMP;
@@ -227,10 +227,10 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER REVDATE_trg_%I
+		CREATE or replace TRIGGER _pgf_internal_revdate_trg_%I
 		before insert or UPDATE ON %I
 		FOR EACH ROW
-		execute procedure REVDATE_trgfun_%I();
+		execute procedure _pgf_internal_revdate_trgfun_%I();
 		$trg$, id,
 		table_name,
 		id
@@ -266,7 +266,7 @@ BEGIN
 	));
 
 	execute format($fun$
-		CREATE OR REPLACE FUNCTION COUNTLNK_trgfun_%I()
+		CREATE OR REPLACE FUNCTION _pgf_internal_count_trgfun_%I()
 		RETURNS TRIGGER AS $inner_trg$
 			BEGIN
 				IF TG_OP='INSERT' then
@@ -316,10 +316,10 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER COUNTLNK_trg_%I
+		CREATE or replace TRIGGER _pgf_internal_count_trg_%I
 		after delete or insert or update ON %I
 		FOR EACH ROW
-		execute procedure COUNTLNK_trgfun_%I();
+		execute procedure _pgf_internal_count_trgfun_%I();
 		$trg$,
 		id, -- function name
 		linked_table_name,
@@ -327,10 +327,10 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER COUNTLNK_trg_truncate_%I
+		CREATE or replace TRIGGER _pgf_internal_count_trg_truncate_%I
 		after truncate ON %I
 		FOR EACH STATEMENT
-		execute procedure COUNTLNK_trgfun_%I();
+		execute procedure _pgf_internal_count_trgfun_%I();
 		$trg$,
 		id, -- trigger name
 		linked_table_name,
@@ -435,7 +435,7 @@ BEGIN
 
 	-- create main trigger
 	str := format($fun$
-		CREATE OR REPLACE FUNCTION AGG_trgfun_%I() --id
+		CREATE OR REPLACE FUNCTION _pgf_internal_minmax_table_trgfun_%I() --id
 		RETURNS TRIGGER AS $inner_trg$
 			DECLARE
 				id_of_min_val %I.%I%%TYPE; -- table_name, pk
@@ -582,10 +582,10 @@ BEGIN
 	execute str;
 
     execute format($trg$
-		CREATE or replace TRIGGER AGG_trg_%I
+		CREATE or replace TRIGGER _pgf_internal_minmax_table_trg_%I
 		after delete or insert or update ON %I
 		FOR EACH ROW
-		execute procedure AGG_trgfun_%I();
+		execute procedure _pgf_internal_minmax_table_trgfun_%I();
 		$trg$,
 		id,
 		quote_ident(table_name),
@@ -663,8 +663,8 @@ CREATE OR REPLACE PROCEDURE pgf_treelevel(
     level_column TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
-    trg_func_name TEXT := format('treelevel_func_%s', id);
-    trg_name TEXT := format('treelevel_trg_%s', id);
+    trg_func_name TEXT := format('_pgf_internal_treelevel_trgfun_%s', id);
+    trg_name TEXT := format('_pgf_internal_treelevel_trg_%s', id);
 BEGIN
 	call _pgf_internal_insert_metadata(id, 'treelevel', jsonb_build_object(
 		'table_name', table_name,
@@ -939,7 +939,7 @@ BEGIN
             select_expr := select_expr || format('%L', discriminator_values[i]);
 
             EXECUTE format($f$
-                CREATE OR REPLACE FUNCTION UNION_sub_to_base_trgfun_%s_%s() -- id, sub_tables[i]
+                CREATE OR REPLACE FUNCTION _pgf_internal_inheritance_table_trgfun_%s_%s() -- id, sub_tables[i]
                 RETURNS TRIGGER AS $$
                 BEGIN
                     IF TG_OP = 'INSERT' THEN
@@ -959,9 +959,9 @@ BEGIN
                 base_table_name, discriminator_column, discriminator_values[i]);
 
             EXECUTE format($t$
-                CREATE TRIGGER UNION_sub_to_base_trg_%s_%s
+                CREATE TRIGGER _pgf_internal_inheritance_table_trg_%s_%s
                 AFTER INSERT OR UPDATE OR DELETE ON %I
-                FOR EACH ROW EXECUTE PROCEDURE UNION_sub_to_base_trgfun_%s_%s();
+                FOR EACH ROW EXECUTE PROCEDURE _pgf_internal_inheritance_table_trgfun_%s_%s();
             $t$, id, sub_tables[i], sub_tables[i], id, sub_tables[i]);
         END LOOP;
     ELSE
@@ -992,7 +992,7 @@ BEGIN
             END IF;
 
             EXECUTE format($f$
-                CREATE OR REPLACE FUNCTION UNION_base_to_sub_trgfun_%s_%s() -- id, sub_tables[i]
+                CREATE OR REPLACE FUNCTION _pgf_internal_inheritance_table_trgfun_%s_%s() -- id, sub_tables[i]
                 RETURNS TRIGGER AS $$
                 BEGIN
 					IF TG_OP = 'INSERT' AND NEW.%I = %L THEN -- discriminator_column, discriminator_values[i]
@@ -1016,9 +1016,9 @@ BEGIN
 			);
 
             EXECUTE format($t$
-                CREATE TRIGGER UNION_base_to_sub_trg_%s_%s
+                CREATE TRIGGER _pgf_internal_inheritance_table_trg_%s_%s
                 AFTER INSERT OR UPDATE OR DELETE ON %I
-                FOR EACH ROW EXECUTE PROCEDURE UNION_base_to_sub_trgfun_%s_%s();
+                FOR EACH ROW EXECUTE PROCEDURE _pgf_internal_inheritance_table_trgfun_%s_%s();
             $t$, id, sub_tables[i], base_table_name, id, sub_tables[i]);
         END LOOP;
     END IF;
