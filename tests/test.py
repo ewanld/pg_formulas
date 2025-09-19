@@ -535,7 +535,7 @@ class TestModule(unittest.TestCase):
         self.conn.commit()
 
     def test_enable_disable_drop(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'inheritance_table']
+        kinds = ['revdate', 'count', 'minmax_table', 'inheritance_table', 'audit_table']
         for kind in kinds:
             id = f'{kind}_id'
             self.create_formula(kind, id)
