@@ -96,10 +96,9 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 ## Common functions
 | Function name | Description |
 |---------------|-------------|
-| ```pgrt_enable(formula_id)``` | Enable the triggers associated with this formula (NB: triggers are enabled by default after creation. This function is useful only after a call to ```pgrt_disable```) |
-| ```pgrt_disable(formula_id)``` | Disable the triggers associated with this formula (while keeping them in the database structure). |
-| ```pgrt_drop(formula_id)``` | Drop (delete) the triggers associated with this formula. |
-| ```pgrt_refresh(formula_id)``` | Full refresh of the data (force a full re-sync).
+| ```pgf_set_enabled(formula_id TEXT, enabled BOOLEAN)``` | Enable or disable the triggers associated with this formula (NB: triggers are enabled by default after creation.) |
+| ```pgf_drop(formula_id)``` | Drop (delete) the triggers associated with this formula. |
+| ```pgf_refresh(formula_id)``` | Full refresh of the data (force a full re-sync).
 
 
 
@@ -108,7 +107,7 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 ### Syntax
 ```sql
-PROCEDURE pgrt_revdate(formula_id TEXT, table_name TEXT, column_name TEXT)
+PROCEDURE pgf_revdate(formula_id TEXT, table_name TEXT, column_name TEXT)
 ```
 
 | Argument         | Description |
@@ -127,7 +126,7 @@ From the below table ```customer```, we want to update the ```last_modified``` c
 
 Then from a Postgresql shell execute :
 ```sql
-call pgrt_revdate('customer_modified_at', 'customer', 'last_modified'); -- create the trigger
+call pgf_revdate('customer_modified_at', 'customer', 'last_modified'); -- create the trigger
 
 update customer set name'Jack Doe' where id=1; -- the trigger is called on update
 select last_modified from customer where id=1; -- returns the timestamp of the update statement
@@ -157,7 +156,7 @@ Synchronization between the base (union) table an sub-tables is unidirectional b
 
 Syntax:
 ```sql
-PROCEDURE pgrt_inheritance_table (
+PROCEDURE pgf_inheritance_table (
     id TEXT,
     base_table_name TEXT,
     discriminator_column TEXT DEFAULT 'discriminator',
@@ -224,7 +223,7 @@ Given the following two tables ```bike``` and ```car```, we would like to synchr
 
 From a Postgresql shell execute :
 ```sql
-call pgrt_inheritance_table('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB'); -- create the trigger
+call pgf_inheritance_table('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To_SUB'); -- create the trigger
 ```
 
 This will :
