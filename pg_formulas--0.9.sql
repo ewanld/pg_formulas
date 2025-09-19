@@ -193,6 +193,12 @@ begin
 				execute format('alter table %I enable trigger _pgf_internal_inheritance_table_trg_%s_%s;', base_table_name, id, sub_tables[i]);
 			END LOOP;
 		END IF;
+
+	elsif kind = 'audit_table' then
+		sub_tables := _pgf_internal_jsonb_to_text_array(args->'audited_table_names');
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_audit_table_trg_%s_%s;', sub_tables[i], enable_fragment, id, sub_tables[i]);
+		END LOOP;
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
