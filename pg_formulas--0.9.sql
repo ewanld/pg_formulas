@@ -38,13 +38,41 @@ BEGIN
 END;
 $proc$;
 
-
 CREATE OR REPLACE FUNCTION _pgf_internal_jsonb_to_text_array(j jsonb)
 RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
     SELECT array_agg(value)
     FROM jsonb_array_elements_text(j) AS t(value);
 $$;
 
+-- Given an array of column names, build the following string:
+-- left_prefix.column_names[0] = right_prefix.column_names[0] AND left_prefix.column_names[1] = right_prefix.column_names[1] AND ...
+CREATE OR REPLACE FUNCTION _pgf_internal_build_join_clause(column_names TEXT[], left_prefix TEXT default '', right_prefix TEXT default '')
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+DECLARE
+	column_names_quoted TEXT[];
+	res TEXT; -- result
+BEGIN
+	-- create array of quoted column names
+	column_names_quoted := column_names;
+	for i in 1..array_length(column_names, 1) LOOP
+		column_names_quoted[i] := quote_ident(column_names[i]);
+	end loop;
+
+	-- build result string
+	for i in 1..array_length(column_names, 1) LOOP
+		res := res || left_prefix || column_names_quoted[i] || ' = ' || right_prefix || column_names_quoted[i];
+		if i < array_length(column_names, 1) then
+			res := res || ' AND ';
+		end if;
+	end loop;
+
+	return res;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- COMMON FUNCTIONS
+--------------------------------------------------------------------------------
 create or replace procedure pgf_refresh(
 	id TEXT
 )
@@ -417,29 +445,10 @@ BEGIN
 	group_by_columns_joined := array_to_string(group_by_column_quoted, ', ');
 	group_by_columns_new_joined := 'NEW.' || array_to_string(group_by_column_quoted, ', NEW.');
 	
-	-- init where_condition_on_group_by
-	for i in 1..array_length(group_by_column, 1) LOOP
-		where_condition_on_group_by := where_condition_on_group_by || group_by_column_quoted[i] || ' = OLD.' || group_by_column_quoted[i];
-		if i < array_length(group_by_column, 1) then
-			where_condition_on_group_by := where_condition_on_group_by || ' AND ';
-		end if;
-	end loop;
-
-	-- init where_condition_on_group_by_qual
-	for i in 1..array_length(group_by_column, 1) LOOP
-		where_condition_on_group_by_qual := where_condition_on_group_by_qual || format('%I = %I.%I', group_by_column_quoted[i], table_name, group_by_column_quoted[i]);
-		if i < array_length(group_by_column, 1) then
-			where_condition_on_group_by_qual := where_condition_on_group_by_qual || ' AND ';
-		end if;
-	end loop;
-
-	-- init where_condition_on_group_by_OLDNEW
-	for i in 1..array_length(group_by_column, 1) LOOP
-		where_condition_on_group_by_OLDNEW := where_condition_on_group_by_OLDNEW || format('OLD.%I = NEW.%I', group_by_column_quoted[i], group_by_column_quoted[i]);
-		if i < array_length(group_by_column, 1) then
-			where_condition_on_group_by_OLDNEW := where_condition_on_group_by_OLDNEW || ' AND ';
-		end if;
-	end loop;
+	-- init where condition SQL fragments
+	where_condition_on_group_by := _pgf_internal_build_join_clause(group_by_column, '', 'OLD.');
+	where_condition_on_group_by_qual := _pgf_internal_build_join_clause(group_by_column, '', table_name || '.');
+	where_condition_on_group_by_OLDNEW := _pgf_internal_build_join_clause(group_by_column, 'OLD.', 'NEW.');
 	
 	-- create aggregate table
 	execute format($tbl$
