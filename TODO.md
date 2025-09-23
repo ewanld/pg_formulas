@@ -40,8 +40,10 @@ Functions to implement:
 # TODO
 
 * pgf_inheritance_table: make pk column name configurable
-* ALL: allow composite PKs
 * ALL: drop trigger if exists before creating them
 * SYNC: add a filter clause
 * SYNC: add a "mapping + inverse_mapping" function (lambda function)
 * JOIN : add a filter clause
+* ALL : replace all "pk TEXT" arguments to "pk TEXT[]", allowing multiple PK columns to be set. Add a check in code and README to indicate that only one PK column is supported at the time
+* ALL: allow composite PKs
+* ALL : allow deducing PK columns from the meta model instead of passing as argument.

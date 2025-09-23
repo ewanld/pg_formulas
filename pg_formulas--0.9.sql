@@ -396,7 +396,7 @@ BEGIN
 
 	-- set default values for optional arguments
 	IF agg_table is NULL then
-		agg_table := 'agg_' || id;
+		agg_table := table_name || '_minmax';
 	END IF;
 
 	call _pgf_internal_insert_metadata(id, 'minmax_table', jsonb_build_object(

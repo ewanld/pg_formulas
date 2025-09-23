@@ -99,9 +99,9 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 ## Common functions
 | Function name | Description |
 |---------------|-------------|
-| ```pgf_set_enabled(formula_id TEXT, enabled BOOLEAN)``` | Enable or disable the triggers associated with this formula (NB: triggers are enabled by default after creation.) |
-| ```pgf_drop(formula_id)``` | Drop (delete) the triggers associated with this formula. |
-| ```pgf_refresh(formula_id)``` | Full refresh of the data (force a full re-sync).
+| ```pgf_set_enabled(id TEXT, enabled BOOLEAN)``` | Enable or disable the triggers associated with this formula (NB: triggers are enabled by default after creation.) |
+| ```pgf_drop(id TEXT)``` | Drop (delete) the triggers associated with this formula. |
+| ```pgf_refresh(id TEXT)``` | Full refresh of the data (force a full re-sync).
 
 
 
@@ -111,7 +111,7 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 ### Syntax
 ```sql
 PROCEDURE pgf_revdate(
-    formula_id TEXT,
+    id TEXT,
     table_name TEXT,
     column_name TEXT
 )
@@ -119,7 +119,7 @@ PROCEDURE pgf_revdate(
 
 | Argument         | Description |
 |-------------|------ |
-| ```formula_id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
 | ```table_name``` | Name of the table containing the column to update
 | ```column_name``` | Name of the column to update. The column must have a date or datetime type and must exist in the table structure (pg_formulas does not create the column). 
 
@@ -152,9 +152,36 @@ TODO
 TODO
 
 ## MINMAX_TABLE formula
-**_Create an aggregation function (count + min or max) for rows in a table, with optional GROUP BY_**
+**_Create an aggregate table that computes, for each group of rows from a given table: the row count, the min and max values, the ID of min and max values_**
 
-TODO
+### Synax
+
+```sql
+PROCEDURE pgf_minmax_table (
+	id text,
+    table_name TEXT,
+	pk TEXT,
+    aggregate_column TEXT,
+    options JSONB DEFAULT '{
+        group_by_column: [],
+        agg_table: null
+    '}
+)
+```
+
+| Argument         | Description |
+|-------------|------ |
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```table_name``` | Name of the source table containing the data to be aggregated.
+| ```pk``` | Name of the primary key column name from the source table.
+| ```aggregate_column``` | name of the column from the source table containing the data to be aggregated.
+| ```options``` | Additional optional arguments, passed as a JSONB object (see available options below).
+
+Additional options :
+| JSONB field | Default value | Description |
+|-------------|---------------|-------------|
+| ```group_by_column``` | ```'[]'``` | Allows grouping aggregated data according to the specified columns (similar to a ```GROUP BY``` expression). 
+| ```agg_table``` | ```table_name \|\| '_minmax'```  | Name of the aggregate table to be created.
 
 
 ## INHERITANCE_TABLE formula
@@ -168,7 +195,7 @@ PROCEDURE pgf_inheritance_table (
     id TEXT,
     base_table_name TEXT,
     sub_tables TEXT[]
-    sync_direction TEXT DEFAULT 'BASE_TO_SUB',
+    sync_direction TEXT,
     options JSONB DEFAULT '{
         "discriminator_column": "discriminator"
         "discriminator_values": NULL
@@ -178,7 +205,7 @@ PROCEDURE pgf_inheritance_table (
 
 | Argument         | Description |
 |-------------|------ |
-| ```formula_id``` | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
 | ```base_table_name``` | Name of the base (union) table. This table is created automatically on function call.
 | ```sub_tables``` | Name of tables to be kept in sync with the base table.
 | ```sync_direction``` | Allowed values: ```'BASE_TO_SUB'``` to propagate changes unidirectionally from the base table to the sub-tables ; ```'SUB_TO_BASE'``` to propagate changes unidirectionally from the sub-tables table to the base table. 
@@ -286,7 +313,7 @@ The date of the row before and after the operation are both stored in the audit 
 
 ```sql
 PROCEDURE pgf_audit_table(
-    formula_id TEXT,
+    id TEXT,
     audit_table_name TEXT,
     audited_table_names TEXT[],
     options JSONB DEFAULT '{
@@ -304,7 +331,7 @@ PROCEDURE pgf_audit_table(
 
 | Argument         | Description |
 |-------------|------ |
-| ```formula_id``` | formula_id | Id to identify this particular formula instance (must be unique across all declared formulas).
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
 | ```audited_table_names``` | Array of table names to audit (tracked tables).
 | ```audit_table_name``` | Name of the table storing audit (tracking) events.
 | ```options``` | Additional optional arguments, passed as a JSONB object (see available options below).
@@ -327,7 +354,7 @@ TODO
 ### Syntax
 ```sql
 PROCEDURE pgf_sync(
-    formula_id TEXT,
+    id TEXT,
     table_name TEXT,
     column1 TEXT,
     column2 TEXT

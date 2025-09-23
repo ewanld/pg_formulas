@@ -625,6 +625,7 @@ class TestModule(unittest.TestCase):
         record = self.fetch_one(f"select * from customer where id='8'")
         self.assertEqual(record['customer_name'], None)
         self.assertEqual(record['name'], None)
+        
 if __name__ == '__main__':
     unittest.main()
 
