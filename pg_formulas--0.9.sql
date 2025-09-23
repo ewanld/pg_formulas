@@ -75,6 +75,27 @@ BEGIN
 END;
 $$;
 
+-- join column name with a comma + an optional prefix.
+-- For instance, given fragments = ['a', 'b', 'c'] and prefix = 'OLD.' and delimiter ', '
+-- Returns the string: 'OLD.a, OLD.b, OLD.c'
+create or replace function _pgf_internal_join(fragments TEXT[], prefix TEXT default '', suffix TEXT default '', delimiter TEXT default ', ', quote_fragments boolean default true)
+returns text
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+	res TEXT; -- result
+	fragments_quoted TEXT[];
+BEGIN
+	fragments_quoted := fragments;
+	if quote_fragments then
+		for i in 1..array_length(fragments, 1) LOOP
+			fragments_quoted[i] := quote_ident(fragments[i]);
+		end loop;
+	end if;
+	res := prefix || array_to_string(fragments, suffix || delimiter || prefix) || suffix;
+	return res;
+END;
+$$;
+
 --------------------------------------------------------------------------------
 -- COMMON FUNCTIONS
 --------------------------------------------------------------------------------
@@ -420,7 +441,6 @@ DECLARE
 	str TEXT := ''; -- string buffer
 	c TEXT; -- loop index
 	i int; -- loop index
-	group_by_column_quoted TEXT[]; -- group by column names array where each item is quoted
 	group_by_columns_joined TEXT; -- group by column names, joined with ','
 	group_by_columns_new_joined TEXT; -- group by column names where each name is prefixed with 'NEW.', joined with ','
 	where_condition_on_group_by TEXT := ''; -- SQL fragment : "grp1 = OLD.grp1 AND grp2 = OLD.grp2..."
@@ -442,13 +462,8 @@ BEGIN
 	group_by_column = _pgf_internal_jsonb_to_text_array(options->'group_by_column');
 	agg_table = options->>'agg_table';
 
-	-- create array of quoted 'group by' column names
-	group_by_column_quoted := group_by_column;
-	for i in 1..array_length(group_by_column, 1) LOOP
-		group_by_column_quoted[i] := quote_ident(group_by_column[i]);
-	end loop;
-	group_by_columns_joined := array_to_string(group_by_column_quoted, ', ');
-	group_by_columns_new_joined := 'NEW.' || array_to_string(group_by_column_quoted, ', NEW.');
+	group_by_columns_joined := _pgf_internal_join(group_by_column);
+	group_by_columns_new_joined := 'NEW.' || _pgf_internal_join(group_by_column, 'NEW.');
 	
 	-- init where condition SQL fragments
 	where_condition_on_group_by := _pgf_internal_build_join_clause(group_by_column, '', 'OLD.');
@@ -458,7 +473,7 @@ BEGIN
 	-- create aggregate table
 	execute format($tbl$
 		create table %I as
-		select %s, %I as min_value, %I as id_of_min, %I as max_value, %I as id_of_max, 0::int as row_count
+		select %s, %I as min_value, %I as id_of_min, %I as max_value, %I as id_of_max, 0::bigint as row_count
 		from %I
 		limit 0;
 		$tbl$,
@@ -1094,13 +1109,17 @@ DECLARE
     op_delete TEXT;
     trg_func_name TEXT;
     trg_name TEXT;
+	is_insert_audited TEXT; -- 'true' if insert operations are audited, 'false' otherwise
+	is_update_audited TEXT; -- 'true' if update operations are audited, 'false' otherwise
+	is_delete_audited TEXT; -- 'true' if delete operations are audited, 'false' otherwise
 BEGIN
     -- Set default options
     options := options
-        || jsonb_build_object('operation_column_name', 'operation')
+        || jsonb_build_object('operation_column_name', 'OPERATION')
         || jsonb_build_object('operations_mapping', jsonb_build_object('INSERT', 'INSERT', 'UPDATE', 'UPDATE', 'DELETE', 'DELETE'))
         || jsonb_build_object('old_value_column_name', 'OLD_VALUE')
-        || jsonb_build_object('new_value_column_name', 'NEW_VALUE');
+        || jsonb_build_object('new_value_column_name', 'NEW_VALUE')
+		|| jsonb_build_object('audited_operations', json_build_array('INSERT', 'UPDATE', 'DELETE'));
 
     operation_column_name := options->>'operation_column_name';
     operations_mapping := options->'operations_mapping';
@@ -1110,6 +1129,10 @@ BEGIN
     op_insert := operations_mapping->>'INSERT';
     op_update := operations_mapping->>'UPDATE';
     op_delete := operations_mapping->>'DELETE';
+
+	is_insert_audited = (options->'audited_operations' @> '["INSERT"]'::jsonb)::text; -- @> is the 'contains' JSONB operator
+	is_update_audited = (options->'audited_operations' @> '["UPDATE"]'::jsonb)::text; -- @> is the 'contains' JSONB operator
+	is_delete_audited = (options->'audited_operations' @> '["DELETE"]'::jsonb)::text; -- @> is the 'contains' JSONB operator
 
     -- Insert metadata
     call _pgf_internal_insert_metadata(id, 'audit_table', jsonb_build_object(
@@ -1140,30 +1163,30 @@ BEGIN
         trg_name := format('_pgf_internal_audit_table_trg_%s_%s', id, audited_table_names[i]);
 
         EXECUTE format($f$
-            CREATE OR REPLACE FUNCTION %I()
+            CREATE OR REPLACE FUNCTION %I() -- trg_func_name
             RETURNS TRIGGER AS $$
             BEGIN
-                IF TG_OP = 'INSERT' THEN
-                    INSERT INTO %I(table_name, %s, %s, %s)
+                IF %s AND TG_OP = 'INSERT' THEN -- is_insert_audited
+                    INSERT INTO %I(table_name, %s, %s, %s) -- audit_table_name, operation_column_name, old_value_column_name, new_value_column_name
                     VALUES (
                         TG_TABLE_NAME,
-                        %L,
+                        %L, -- op_insert
                         NULL,
                         to_jsonb(NEW)
                     );
-                ELSIF TG_OP = 'UPDATE' THEN
-                    INSERT INTO %I(table_name, %s, %s, %s)
+                ELSIF %s and TG_OP = 'UPDATE' THEN --  -- is_update_audited
+                    INSERT INTO %I(table_name, %s, %s, %s) -- audit_table_name, operation_column_name, old_value_column_name, new_value_column_name
                     VALUES (
                         TG_TABLE_NAME,
-                        %L,
+                        %L, -- op_update
                         to_jsonb(OLD),
                         to_jsonb(NEW)
                     );
-                ELSIF TG_OP = 'DELETE' THEN
-                    INSERT INTO %I(table_name, %s, %s, %s)
+                ELSIF %s and TG_OP = 'DELETE' THEN --  -- is_delete_audited
+                    INSERT INTO %I(table_name, %s, %s, %s) -- audit_table_name, operation_column_name, old_value_column_name, new_value_column_name
                     VALUES (
                         TG_TABLE_NAME,
-                        %L,
+                        %L, -- op_delete
                         to_jsonb(OLD),
                         NULL
                     );
@@ -1171,11 +1194,17 @@ BEGIN
                 RETURN NEW;
             END;
             $$ LANGUAGE plpgsql;
-        $f$,
-            trg_func_name,
-            audit_table_name, operation_column_name, old_value_column_name, new_value_column_name, op_insert,
-            audit_table_name, operation_column_name, old_value_column_name, new_value_column_name, op_update,
-            audit_table_name, operation_column_name, old_value_column_name, new_value_column_name, op_delete
+        $f$
+			, trg_func_name
+			, is_insert_audited
+			, audit_table_name, operation_column_name, old_value_column_name, new_value_column_name
+			, op_insert
+			, is_update_audited
+			, audit_table_name, operation_column_name, old_value_column_name, new_value_column_name
+			, op_update
+			, is_delete_audited
+			, audit_table_name, operation_column_name, old_value_column_name, new_value_column_name
+			, op_delete
         );
 
         EXECUTE format($t$
@@ -1259,6 +1288,120 @@ BEGIN
 		table_name,
 		trg_func_name
     );
+
+	-- create refresh procedure
+	execute format($inner_proc$
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
+		LANGUAGE plpgsql
+		AS $inner_proc2$
+			begin
+			    update %I -- table_name
+				set %I = CASE WHEN %I IS NULL THEN %I ELSE %I END, -- column1, column1, column2, column1
+				%I = CASE WHEN %I IS NULL THEN %I ELSE %I END; -- column2, column1, column2, column1
+			end;
+			$inner_proc2$;
+		$inner_proc$
+		, id
+		, table_name
+		, column1, column1, column2, column1
+		, column2, column1, column2, column1
+	);
+
+	-- refresh
+	call pgf_refresh(id);
+
+END;
+$proc$;
+
+--------------------------------------------------------------------------------
+-- INTERSECT_TABLE
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE pgf_intersect_table(
+    id TEXT,
+    table_names TEXT[],
+	column_names TEXT[],
+    intersect_table_name TEXT
+)
+LANGUAGE plpgsql
+AS $proc$
+DECLARE
+	column_names_joined TEXT;
+	row_count_column_names_joined TEXT;
+	i int; -- loop index
+	is_intersect_column_def TEXT;
+BEGIN
+    -- Insert metadata
+    call _pgf_internal_insert_metadata(id, 'intersect_table', jsonb_build_object(
+        'table_names', table_names,
+        'column_names', column_names,
+        'intersect_table_name', intersect_table_name
+    ));
+
+	-- create intesection table
+	row_count_column_names_joined := _pgf_internal_join(table_names, prefix => '0::bigint as pgf_row_count_', quote_fragments => false);
+	column_names_joined := _pgf_internal_join(column_names);
+	is_intersect_column_def := _pgf_internal_join(table_names, prefix => 'pgf_row_count_', suffix => ' > 0', delimiter => ' AND ');
+	
+	execute format($$
+		create table %I -- intersect_table_name
+		as select %s, %s  -- column_names_joined, row_count_column_names_joined
+		from %I -- table_names[1]
+		limit 0;
+	$$
+		, intersect_table_name
+		, column_names_joined, row_count_column_names_joined
+		, table_names[1]
+	);
+
+	execute format('alter table %I add column is_intersect boolean generated always as (%s) stored', intersect_table_name, is_intersect_column_def);
+
+    -- Create trigger functions
+	for i in 1..array_length(table_names, 1) loop
+		EXECUTE format($f$
+			CREATE OR REPLACE FUNCTION _pgf_internal_intersect_table_trgfun_%I_%I() -- id, table_names[i]
+			RETURNS TRIGGER AS $$
+			BEGIN
+				IF TG_OP = 'INSERT' THEN
+					IF NEW.%I IS NOT NULL THEN -- column1
+						NEW.%I := NEW.%I; -- column2, column1
+					ELSE
+						NEW.%I := NEW.%I; -- column1, column2
+					END IF;
+				ELSIF TG_OP = 'UPDATE' THEN
+					IF (OLD.%I IS DISTINCT FROM NEW.%I) THEN -- column1, column1
+						NEW.%I := NEW.%I; -- column2, column1
+					ELSIF (OLD.%I IS DISTINCT FROM NEW.%I) THEN -- column2, column2
+						NEW.%I := NEW.%I; -- column1, column2
+					END IF;
+				END IF;
+				RETURN NEW;
+			END;
+			$$ LANGUAGE plpgsql;
+		$f$
+			, trg_func_name
+			, column1
+			, column2, column1
+			, column1, column2
+			, column1, column1
+			, column2, column1
+			, column2, column2
+			, column1, column2
+		);
+
+		-- Drop existing trigger if exists
+		EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
+
+		-- Create trigger
+		EXECUTE format($trg$
+			CREATE TRIGGER %I -- trg_name
+			BEFORE INSERT OR UPDATE ON %I -- table_name
+			FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
+		$trg$,
+			trg_name,
+			table_name,
+			trg_func_name
+		);
+	end loop;
 
 	-- create refresh procedure
 	execute format($inner_proc$

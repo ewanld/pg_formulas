@@ -80,11 +80,11 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 **Synchronize database fields:**
   * [JOIN](#JOIN): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table.
-  * [SYNC](#SYNC): Synchronize two columns values from the same table.
+  * [SYNC](#SYNC): Synchronize two fields from the same row.
+  * [JSON_FIELD](#JSON): Set the value of a JSONB field to be the contents of a table column.
 
 **Auditing changes:**
   * [REVDATE](#REVDATE): Automatically update a 'last_modified' column.
-  * [CREDATE](#CREDATE): Automatically update a 'creation_date' column.
   * [AUDIT_TABLE](#AUDIT_TABLE): Populate a history (audit) table.
  
 **Working with trees:**
@@ -92,8 +92,7 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
   * [TREEPATH](#TREEPATH): Update a "path" column in a table representing a tree structure.
   * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE): Update a closure table representing all ancestor-descendant pairs for each node.
 
-**Working with JSON:**
-  * [JSON_FIELD](#JSON): Set the value of a JSONB field to be the contents of a table column.
+ 
 
 # API reference
 ## Common functions
@@ -140,12 +139,6 @@ select last_modified from customer where id=1; -- returns the timestamp of the u
 ```
 
 
-
-## CREDATE formula
-**Automatically update a 'creation_date' column.**
-
-TODO
-
 ## COUNT formula
 **_Update a column that counts the number of linked elements_**
 
@@ -183,6 +176,9 @@ Additional options :
 | ```group_by_column``` | ```'[]'``` | Allows grouping aggregated data according to the specified columns (similar to a ```GROUP BY``` expression). 
 | ```agg_table``` | ```table_name \|\| '_minmax'```  | Name of the aggregate table to be created.
 
+### Example
+
+TODO
 
 ## INHERITANCE_TABLE formula
 **_Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables._**
@@ -317,7 +313,7 @@ PROCEDURE pgf_audit_table(
     audit_table_name TEXT,
     audited_table_names TEXT[],
     options JSONB DEFAULT '{
-        "operation_column_name": "operation",
+        "operation_column_name": "OPERATION",
         operations_mapping: {
             "INSERT": "INSERT"
             "UPDATE": "UPDATE"
@@ -325,6 +321,7 @@ PROCEDURE pgf_audit_table(
         },
         "old_value_column_name": "OLD_VALUE",
         "new_value_column_name": "NEW_VALUE",
+        "audited_operations": ["INSERT", "UPDATE", "DELETE"]
     }'::JSONB
 )
 ```
@@ -343,6 +340,7 @@ Additional options :
 | ```operations_mapping``` | | a JSONB sub-object allowing to remap operation type names. Default names are: INSERT, UPDATE, DELETE. To remap an operation name, add it to the JSONB object e.g ```{ "UPDATE": "This row has been updated" }```. |
 |```old_value_column_name``` | ```'OLD_VALUE'``` | The name of the column containing the state of the row before the change event. |
 |```new_value_column_name``` | ```'NEW_VALUE'``` | The name of the column containing the state of the row after the change event. |
+|```audited_operations```    | ```'["INSERT", "UPDATE", "DELETE"]'``` | The types of operations to audit.
 
 ### Example
 
@@ -367,6 +365,49 @@ Given the table table_name:
 
 This formula is particularly useful for renaming a column in zero-downtime migration scenarios, as it allows both the old version (which updates the original column) and the new version (which updates the renamed column) to run concurrently.
 
+
+# Recipes
+## Automatically update a 'creation_date' column.
+A trigger is not required in this case. It is faster to use a default value for the creation date column:
+
+```sql
+CREATE TABLE my_table (
+    id serial PRIMARY KEY,
+    data text,
+    creation_date timestamp DEFAULT now()
+);
+```
+
+## Update a field that is the computation of other fields from the same row
+A trigger is not required in this case. It can be achieved using GENERATED columns:
+
+```sql
+CREATE TABLE my_table (
+    a int,
+    b int,
+    c int GENERATED ALWAYS AS (a + b) STORED
+);
+```
+
+## Update a field that is the computation of other fields from joined tables
+Retrive all inputs in the main table using the [JOIN](#JOIN) formula. Then, use a GENERATED column to compute the result.
+
+## Archive rows instead of deleting them
+Row archiving is useful for later inspection or restoration of deleted rows.
+Two patterns can help acheive this:
+* Pattern 1 : "Soft-delete": instead of deleting the row, set a ```soft_deleted``` row to ```true```. Be careful to always select rows with soft_deleted=false in subequent queries.
+  This pattern can be further improved by partitioning data according to the soft_deleted column, to avoid any performance penalty from keeping deleted records.
+  For instance:
+
+```sql
+CREATE TABLE my_table (
+    id serial PRIMARY KEY,
+    data text
+    is_deleted boolean NOT NULL DEFAULT false,
+) PARTITION BY LIST (is_deleted);
+```
+
+* Pattern 2 : call the ```AUDIT_TABLE``` formula while setting the ```options``` argument to ```{ audited_operations : ['DELETE'] }```. This will store all deleted in a dedicated table.
 
 # Implementation details
 A metadata table named ```pgf_metadata``` is created to track all formula declarations.

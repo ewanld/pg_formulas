@@ -22,20 +22,20 @@ Functions to implement:
   * 🟠TODO : UNION_TABLE
   * 🟠TODO : INTERSECT_TABLE
   * 🟠TODO : EXCEPT_TABLE
-  * 🟠TODO : JOIN
+  
+**Synchronize database fields:**
+* 🟠TODO : JOIN
+* 🟢DONE : SYNC
+* 🟠TODO : JSON_FIELD
 
 **Auditing changes:**
   * 🟢DONE : REVDATE
-  * 🟠TODO : CREDATE
-  * 🟠TODO : AUDIT_TABLE
+  * 🟢DONE : AUDIT_TABLE
  
 **Working with trees:**
   * 🟢DONE : TREELEVEL
   * 🟠TODO : TREEPATH
   * 🟠TODO : TREECLOSURE_TABLE
-
-**Working with JSON:**
-  * 🟠TODO : JSON_FIELD
 
 # TODO
 
@@ -47,3 +47,5 @@ Functions to implement:
 * ALL : replace all "pk TEXT" arguments to "pk TEXT[]", allowing multiple PK columns to be set. Add a check in code and README to indicate that only one PK column is supported at the time
 * ALL: allow composite PKs
 * ALL : allow deducing PK columns from the meta model instead of passing as argument.
+* MINMAX_TABLE: test case with no group by column
+* MINMAX_TABLE: refactor: add all column rename arguments into a single hashmap 'rename_columns'

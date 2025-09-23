@@ -103,6 +103,16 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
                 self.cur.execute("call pgf_treelevel(%s, 'node', 'id', 'parent_id', 'level')", (id,))
 
+            case 'intersect_table':
+                self.cur.execute("drop table if exists a cascade;");
+                self.cur.execute("drop table if exists b cascade;");
+                self.cur.execute("drop table if exists c cascade;");
+                self.cur.execute("drop table if exists intersect_table cascade;");
+                self.cur.execute("create table a(column1 text, column2 int);")
+                self.cur.execute("create table b(column1 text, column2 int);")
+                self.cur.execute("create table c(column1 text, column2 int);")
+                self.cur.execute("call pgf_intersect_table(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
+
             case _:
                 raise ValueError(f"Invalid Argument: {kind}")
         self.cur.execute("commit");
@@ -626,6 +636,10 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['customer_name'], None)
         self.assertEqual(record['name'], None)
         
+    def test_pgf_intersect_table(self):
+        self.create_formula('intersect_table', 'intersect_table1');
+        self.cur.execute("commit");
+
 if __name__ == '__main__':
     unittest.main()
 
