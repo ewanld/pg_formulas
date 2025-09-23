@@ -378,11 +378,12 @@ CREATE or replace PROCEDURE pgf_minmax_table (
     table_name TEXT,
 	pk TEXT,
     aggregate_column TEXT,
-    group_by_column TEXT[] default '{}',
-    agg_table TEXT default null
+	options JSONB
 )
 LANGUAGE plpgsql AS $proc$
 DECLARE
+	group_by_column TEXT[];
+    agg_table TEXT;
 	str TEXT := ''; -- string buffer
 	c TEXT; -- loop index
 	i int; -- loop index
@@ -395,17 +396,18 @@ DECLARE
 BEGIN
 
 	-- set default values for optional arguments
-	IF agg_table is NULL then
-		agg_table := table_name || '_minmax';
-	END IF;
+	options := options || jsonb_build_object('group_by_column', null);
+	options := options || jsonb_build_object('agg_table', table_name || '_minmax');
 
 	call _pgf_internal_insert_metadata(id, 'minmax_table', jsonb_build_object(
 		'table_name', table_name,
 		'pk', pk,
 		'aggregate_column', aggregate_column,
-		'group_by_column', group_by_column,
-		'agg_table', agg_table
+		'options', options
 	));
+
+	group_by_column = _pgf_internal_jsonb_to_text_array(options->'group_by_column');
+	agg_table = options->>'agg_table';
 
 	-- create array of quoted 'group by' column names
 	group_by_column_quoted := group_by_column;
@@ -562,7 +564,6 @@ BEGIN
 							row_count=%I.row_count+1; -- agg_table
 					/* If group by columns did not change, only update min/max if aggregate_column changed */
 					ELSIF OLD.%I <> NEW.%I THEN -- aggregate_column, aggregate_column
-						/*insert into logs values('diff amount');*/
 						update %I set -- agg_table
 							min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
 							id_of_min = (select %I from %I where %s order by %I asc limit 1), -- pk, table_name, where_condition_on_group_by, aggregate_column
