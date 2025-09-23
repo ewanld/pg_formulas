@@ -46,8 +46,13 @@ $$;
 
 -- Given an array of column names, build the following string:
 -- left_prefix.column_names[0] = right_prefix.column_names[0] AND left_prefix.column_names[1] = right_prefix.column_names[1] AND ...
-CREATE OR REPLACE FUNCTION _pgf_internal_build_join_clause(column_names TEXT[], left_prefix TEXT default '', right_prefix TEXT default '')
-RETURNS text LANGUAGE sql IMMUTABLE AS $$
+CREATE OR REPLACE FUNCTION _pgf_internal_build_join_clause(
+	column_names TEXT[],
+	left_prefix TEXT default '',
+	right_prefix TEXT default ''
+)
+RETURNS text
+LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
 	column_names_quoted TEXT[];
 	res TEXT; -- result
