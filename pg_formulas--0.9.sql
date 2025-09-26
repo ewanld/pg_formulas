@@ -44,54 +44,36 @@ RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
     FROM jsonb_array_elements_text(j) AS t(value);
 $$;
 
--- Given an array of column names, build the following string:
--- left_prefix.column_names[0] = right_prefix.column_names[0] AND left_prefix.column_names[1] = right_prefix.column_names[1] AND ...
-CREATE OR REPLACE FUNCTION _pgf_internal_build_join_clause(
-	column_names TEXT[],
-	left_prefix TEXT default '',
-	right_prefix TEXT default ''
-)
-RETURNS text
-LANGUAGE plpgsql IMMUTABLE AS $$
-DECLARE
-	column_names_quoted TEXT[];
-	res TEXT; -- result
-BEGIN
-	-- create array of quoted column names
-	column_names_quoted := column_names;
-	for i in 1..array_length(column_names, 1) LOOP
-		column_names_quoted[i] := quote_ident(column_names[i]);
-	end loop;
-
-	-- build result string
-	for i in 1..array_length(column_names, 1) LOOP
-		res := res || left_prefix || column_names_quoted[i] || ' = ' || right_prefix || column_names_quoted[i];
-		if i < array_length(column_names, 1) then
-			res := res || ' AND ';
-		end if;
-	end loop;
-
-	return res;
-END;
-$$;
-
--- join column name with a comma + an optional prefix.
--- For instance, given fragments = ['a', 'b', 'c'] and prefix = 'OLD.' and delimiter ', '
--- Returns the string: 'OLD.a, OLD.b, OLD.c'
-create or replace function _pgf_internal_join(fragments TEXT[], prefix TEXT default '', suffix TEXT default '', delimiter TEXT default ', ', quote_fragments boolean default true)
+-- join fragments using the specified patter.
+-- For instance, given fragments = ['a', 'b', 'c'] and pattern='%s = OLD.%s' and delimiter=' AND '
+-- returns the string: "a = OLD.a AND b = OLD.b"
+create or replace function _pgf_internal_join(fragments TEXT[], pattern TEXT default '%s', delimiter TEXT default ', ', quote_fragments boolean default true)
 returns text
 LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
-	res TEXT; -- result
+	res TEXT = ''; -- result
+	i int; -- loop index
 	fragments_quoted TEXT[];
 BEGIN
+	-- leave early on empty array
+	if fragments is null or array_length(fragments, 1) is null then
+		return '';
+	end if;
+
+	-- quote fragments if asked
 	fragments_quoted := fragments;
 	if quote_fragments then
 		for i in 1..array_length(fragments, 1) LOOP
 			fragments_quoted[i] := quote_ident(fragments[i]);
 		end loop;
 	end if;
-	res := prefix || array_to_string(fragments, suffix || delimiter || prefix) || suffix;
+
+	for i in 1..array_length(fragments, 1) loop
+		res := res || replace(pattern, '%s', fragments[i]);
+		if i < array_length(fragments, 1) then
+			res := res || delimiter;
+		end if;
+	end loop;
 	return res;
 END;
 $$;
@@ -448,9 +430,13 @@ DECLARE
 	where_condition_on_group_by_qual TEXT := ''; -- SQL fragment : "grp1 = table_name.grp1 AND grp2 = table_name.grp2..."
 BEGIN
 
+	create table if not exists log(msg text);
+
 	-- set default values for optional arguments
-	options := options || jsonb_build_object('group_by_column', null);
-	options := options || jsonb_build_object('agg_table', table_name || '_minmax');
+	options := jsonb_build_object(
+		'group_by_column', '[]'::jsonb,
+		'agg_table', table_name || '_minmax'
+	) || options;
 
 	call _pgf_internal_insert_metadata(id, 'minmax_table', jsonb_build_object(
 		'table_name', table_name,
@@ -458,17 +444,19 @@ BEGIN
 		'aggregate_column', aggregate_column,
 		'options', options
 	));
+	
 
 	group_by_column = _pgf_internal_jsonb_to_text_array(options->'group_by_column');
 	agg_table = options->>'agg_table';
 
+
 	group_by_columns_joined := _pgf_internal_join(group_by_column);
-	group_by_columns_new_joined := 'NEW.' || _pgf_internal_join(group_by_column, 'NEW.');
+	group_by_columns_new_joined := _pgf_internal_join(group_by_column, 'NEW.%s');
 	
 	-- init where condition SQL fragments
-	where_condition_on_group_by := _pgf_internal_build_join_clause(group_by_column, '', 'OLD.');
-	where_condition_on_group_by_qual := _pgf_internal_build_join_clause(group_by_column, '', table_name || '.');
-	where_condition_on_group_by_OLDNEW := _pgf_internal_build_join_clause(group_by_column, 'OLD.', 'NEW.');
+	where_condition_on_group_by := _pgf_internal_join(group_by_column, '%s = OLD.%s', ' AND ');
+	where_condition_on_group_by_qual := _pgf_internal_join(group_by_column, '%s = ' || table_name || '.%s', ' AND ');
+	where_condition_on_group_by_OLDNEW := _pgf_internal_join(group_by_column, 'OLD.%s = NEW.%s', ' AND ');
 	
 	-- create aggregate table
 	execute format($tbl$
@@ -888,10 +876,10 @@ DECLARE
 	discriminator_values TEXT[];
 BEGIN
 	-- Apply default values to options
-	options := options || jsonb_build_object(
+	options := jsonb_build_object(
         'discriminator_column', 'discriminator',
 		'discriminator_values', sub_tables
-    );
+    ) || options;
 	discriminator_column := options->>'discriminator_column';
 	discriminator_values := _pgf_internal_jsonb_to_text_array(options->'discriminator_values');
 
@@ -1114,12 +1102,13 @@ DECLARE
 	is_delete_audited TEXT; -- 'true' if delete operations are audited, 'false' otherwise
 BEGIN
     -- Set default options
-    options := options
-        || jsonb_build_object('operation_column_name', 'OPERATION')
-        || jsonb_build_object('operations_mapping', jsonb_build_object('INSERT', 'INSERT', 'UPDATE', 'UPDATE', 'DELETE', 'DELETE'))
-        || jsonb_build_object('old_value_column_name', 'OLD_VALUE')
-        || jsonb_build_object('new_value_column_name', 'NEW_VALUE')
-		|| jsonb_build_object('audited_operations', json_build_array('INSERT', 'UPDATE', 'DELETE'));
+    options := jsonb_build_object(
+		'operation_column_name', 'OPERATION',
+        'operations_mapping', jsonb_build_object('INSERT', 'INSERT', 'UPDATE', 'UPDATE', 'DELETE', 'DELETE'),
+        'old_value_column_name', 'OLD_VALUE',
+        'new_value_column_name', 'NEW_VALUE',
+		'audited_operations', json_build_array('INSERT', 'UPDATE', 'DELETE')
+	) || options;
 
     operation_column_name := options->>'operation_column_name';
     operations_mapping := options->'operations_mapping';
@@ -1325,10 +1314,16 @@ CREATE OR REPLACE PROCEDURE pgf_intersect_table(
 LANGUAGE plpgsql
 AS $proc$
 DECLARE
-	column_names_joined TEXT;
-	row_count_column_names_joined TEXT;
+	column_names_joined TEXT; -- SQL fragment: 'column1, column2, ...'
+	column_names_joined_OLD TEXT; -- SQL fragment: 'OLD.column1, OLD.column2, ...'
+	column_names_joined_NEW TEXT; -- SQL fragment: 'NEW.column1, NEW.column2, ...'
+	row_count_column_names_joined TEXT; -- SQL fragment: 'pgf_row_count_table1, pgf_row_count_table1, ...'
 	i int; -- loop index
-	is_intersect_column_def TEXT;
+	t text; -- loop variable
+	pgf_row_count_gt_0_clause TEXT; -- SQL fragment : 'pgf_row_count_table1 > 0 AND pgf_row_count_table2 > 0 AND ...'
+	pgf_row_count_eq_0_clause TEXT; -- SQL fragment: 'pgf_row_count_table1 = 0 AND pgf_row_count_table2 = 0 AND ...'
+	pgf_row_count_def_fragment TEXT; -- SQL fragment
+	inner_table_fragment TEXT; -- SQL fragment
 BEGIN
     -- Insert metadata
     call _pgf_internal_insert_metadata(id, 'intersect_table', jsonb_build_object(
@@ -1337,11 +1332,15 @@ BEGIN
         'intersect_table_name', intersect_table_name
     ));
 
-	-- create intesection table
-	row_count_column_names_joined := _pgf_internal_join(table_names, prefix => '0::bigint as pgf_row_count_', quote_fragments => false);
+	-- prepare sql fragments
+	row_count_column_names_joined := _pgf_internal_join(table_names, '0::bigint as pgf_row_count_%s', quote_fragments => false);
 	column_names_joined := _pgf_internal_join(column_names);
-	is_intersect_column_def := _pgf_internal_join(table_names, prefix => 'pgf_row_count_', suffix => ' > 0', delimiter => ' AND ');
-	
+	column_names_joined_OLD := _pgf_internal_join(column_names, 'OLD.%s');
+	column_names_joined_NEW := _pgf_internal_join(column_names, 'NEW.%s');
+	pgf_row_count_gt_0_clause := _pgf_internal_join(table_names, 'pgf_row_count_%s > 0', delimiter => ' AND ');
+	pgf_row_count_eq_0_clause := _pgf_internal_join(table_names, 'pgf_row_count_%s = 0', delimiter => ' AND ');
+
+	-- create intersection table
 	execute format($$
 		create table %I -- intersect_table_name
 		as select %s, %s  -- column_names_joined, row_count_column_names_joined
@@ -1353,72 +1352,91 @@ BEGIN
 		, table_names[1]
 	);
 
-	execute format('alter table %I add column is_intersect boolean generated always as (%s) stored', intersect_table_name, is_intersect_column_def);
+	execute format('alter table %I add column is_intersect boolean generated always as (%s) stored', intersect_table_name, pgf_row_count_gt_0_clause);
+	execute format('alter table %I add primary key (%s)', intersect_table_name, column_names_joined);
+	for i in 1..array_length(table_names, 1) loop
+		execute format('alter table %I alter column pgf_row_count_%I set default 0;', intersect_table_name, table_names[i]);
+	end loop;
 
     -- Create trigger functions
-	for i in 1..array_length(table_names, 1) loop
+	foreach t in array table_names loop
 		EXECUTE format($f$
-			CREATE OR REPLACE FUNCTION _pgf_internal_intersect_table_trgfun_%I_%I() -- id, table_names[i]
+			CREATE OR REPLACE FUNCTION _pgf_internal_intersect_table_trgfun_%I_%I() -- id, t
 			RETURNS TRIGGER AS $$
 			BEGIN
-				IF TG_OP = 'INSERT' THEN
-					IF NEW.%I IS NOT NULL THEN -- column1
-						NEW.%I := NEW.%I; -- column2, column1
-					ELSE
-						NEW.%I := NEW.%I; -- column1, column2
-					END IF;
-				ELSIF TG_OP = 'UPDATE' THEN
-					IF (OLD.%I IS DISTINCT FROM NEW.%I) THEN -- column1, column1
-						NEW.%I := NEW.%I; -- column2, column1
-					ELSIF (OLD.%I IS DISTINCT FROM NEW.%I) THEN -- column2, column2
-						NEW.%I := NEW.%I; -- column1, column2
-					END IF;
+				/* increment new row */
+				IF TG_OP = 'INSERT' or (TG_OP = 'UPDATE' and (%s) <> (%s)) THEN -- column_names_joined_OLD, column_names_joined_NEW
+					insert into %I(%s, pgf_row_count_%I) values -- intersect_table_name, column_names_joined, t
+					(%s, 1) -- column_names_joined_NEW
+					on conflict(%s) do update set pgf_row_count_%I = %I.pgf_row_count_%I + 1; -- column_names_joined, t, intersect_table_name, t
+				end if;
+
+				/* decrement (and optionally remove) old row */
+				if TG_OP = 'DELETE' or (TG_OP = 'UPDATE' and (%s) <> (%s)) then -- column_names_joined_OLD, column_names_joined_NEW
+					update %I -- intersect_table_name
+					set pgf_row_count_%I = pgf_row_count_%I - 1 -- t, t
+					where (%s) = (%s); -- column_names_joined, column_names_joined_OLD
+
+					delete from %I -- intersect_table_name
+					where (%s) = (%s) AND %s; -- column_names_joined, column_names_joined_OLD, pgf_row_count_eq_0_clause
 				END IF;
+
 				RETURN NEW;
 			END;
 			$$ LANGUAGE plpgsql;
 		$f$
-			, trg_func_name
-			, column1
-			, column2, column1
-			, column1, column2
-			, column1, column1
-			, column2, column1
-			, column2, column2
-			, column1, column2
+			, id, t
+			, column_names_joined_OLD, column_names_joined_NEW
+			, intersect_table_name, column_names_joined, t
+			, column_names_joined_NEW
+			, column_names_joined, t, intersect_table_name, t
+			, column_names_joined_OLD, column_names_joined_NEW
+			, intersect_table_name
+			, t, t
+			, column_names_joined, column_names_joined_OLD
+			, intersect_table_name
+			, column_names_joined, column_names_joined_OLD, pgf_row_count_eq_0_clause
 		);
 
 		-- Drop existing trigger if exists
-		EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
+		EXECUTE format('DROP TRIGGER IF EXISTS _pgf_internal_intersect_table_trg_%I_%I ON %I;', id, t, t);
 
 		-- Create trigger
 		EXECUTE format($trg$
-			CREATE TRIGGER %I -- trg_name
-			BEFORE INSERT OR UPDATE ON %I -- table_name
-			FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
-		$trg$,
-			trg_name,
-			table_name,
-			trg_func_name
+			CREATE TRIGGER _pgf_internal_intersect_table_trg_%I_%I -- id, t
+			BEFORE INSERT OR UPDATE OR DELETE ON %I -- t
+			FOR EACH ROW EXECUTE FUNCTION _pgf_internal_intersect_table_trgfun_%I_%I(); -- id, t
+		$trg$
+			, id, t
+			, t
+			, id, t
 		);
 	end loop;
 
 	-- create refresh procedure
+	
+	pgf_row_count_def_fragment := _pgf_internal_join(table_names, 'count(*) filter (where pgf_source_table = ''%s'') as pgf_row_count_%s');
+	inner_table_fragment := _pgf_internal_join(table_names, 'select ''%s'' as pgf_source_table, ' || column_names_joined || ' from %s', delimiter => ' UNION ALL ');
+
 	execute format($inner_proc$
 		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
 		LANGUAGE plpgsql
 		AS $inner_proc2$
 			begin
-			    update %I -- table_name
-				set %I = CASE WHEN %I IS NULL THEN %I ELSE %I END, -- column1, column1, column2, column1
-				%I = CASE WHEN %I IS NULL THEN %I ELSE %I END; -- column2, column1, column2, column1
+				delete from %I; -- intersect_table_name
+				insert into %I -- intersect_table_name
+				select %s, %s -- column_names_joined, pgf_row_count_def_fragment
+				from (%s) t -- inner_table_fragment
+				group by %s; -- column_names_joined
 			end;
 			$inner_proc2$;
 		$inner_proc$
-		, id
-		, table_name
-		, column1, column1, column2, column1
-		, column2, column1, column2, column1
+			, id
+			, intersect_table_name
+			, intersect_table_name
+			, column_names_joined, pgf_row_count_def_fragment
+			, inner_table_fragment
+			, column_names_joined
 	);
 
 	-- refresh

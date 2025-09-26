@@ -49,3 +49,4 @@ Functions to implement:
 * ALL : allow deducing PK columns from the meta model instead of passing as argument.
 * MINMAX_TABLE: test case with no group by column
 * MINMAX_TABLE: refactor: add all column rename arguments into a single hashmap 'rename_columns'
+* ALL: add an option to make created tables unlogged (not written to WAL which is faster but is not crash safe.)

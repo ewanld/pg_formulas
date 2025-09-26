@@ -22,11 +22,13 @@ class TestModule(unittest.TestCase):
         cls.cur = cls.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         schemaName = settings.DATABASE["schema"]
+        cls.cur.execute('drop schema if exists public cascade;')
+        cls.cur.execute('create schema public;')
         cls.cur.execute(f'SET search_path TO {schemaName}')
         
         current_dir = Path(__file__).resolve().parent
 
-        cls.cur.execute('drop table if exists pgf_metadata;')
+        
         cls.execute_sql_file(current_dir / '../pg_formulas--0.9.sql')
         cls.cur.execute("commit;")
 
@@ -78,7 +80,7 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute(f"drop table if exists agg cascade;");
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
-                self.cur.execute(f"call pgf_minmax_table(%s, 'invoice', 'id', 'amount', ARRAY['customer_id', 'country'], 'agg');", (id,))
+                self.cur.execute(f"call pgf_minmax_table(%s, 'invoice', 'id', 'amount', jsonb_build_object('agg_table', 'agg', 'group_by_column', ARRAY['customer_id', 'country']));", (id,))
 
             case 'inheritance_table':
                 self.cur.execute("drop table if exists bike cascade;");
@@ -638,7 +640,28 @@ class TestModule(unittest.TestCase):
         
     def test_pgf_intersect_table(self):
         self.create_formula('intersect_table', 'intersect_table1');
+
+        # add row1 in each table --> expect 1 row in intersect_table
+        self.cur.execute("insert into a(column1, column2) values('row1', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.cur.execute("insert into b(column1, column2) values('row1', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.cur.execute("insert into c(column1, column2) values('row1', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        
+        # add row1 in each table --> expect 2 rows in intersect_table
+        self.cur.execute("insert into a(column1, column2) values('row2', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.cur.execute("insert into b(column1, column2) values('row2', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.cur.execute("insert into c(column1, column2) values('row2', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 2)
+
+        # delete row1 from a single table --> expect 1 row in intersect_table
+        self.cur.execute("delete from c where (column1, column2) = ('row1', 10);")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
         self.cur.execute("commit");
+
 
 if __name__ == '__main__':
     unittest.main()
