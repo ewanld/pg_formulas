@@ -329,75 +329,75 @@ BEGIN
 	));
 
 	execute format($fun$
-		CREATE OR REPLACE FUNCTION _pgf_internal_count_trgfun_%I()
+		CREATE OR REPLACE FUNCTION _pgf_internal_count_trgfun_%I() -- id
 		RETURNS TRIGGER AS $inner_trg$
 			BEGIN
 				IF TG_OP='INSERT' then
-			    	update %I set %I=%I+1 where %I=NEW.%I;
+			    	update %I set %I=%I+1 where %I=NEW.%I; -- base_table_name, base_count_column, base_count_column, base_pk, linked_fk
 				ELSIF TG_OP='DELETE' then
-					update %I set %I=%I-1 where %I=OLD.%I;
-				ELSIF TG_OP='UPDATE' and OLD.%I <> NEW.%I then
-					update %I set %I=%I-1 where %I=OLD.%I;
-					update %I set %I=%I+1 where %I=NEW.%I;
+					update %I set %I=%I-1 where %I=OLD.%I; -- base_table_name, base_count_column, base_count_column, base_pk, linked_fk
+				ELSIF TG_OP='UPDATE' and OLD.%I <> NEW.%I then -- linked_fk, linked_fk
+					update %I set %I=%I-1 where %I=OLD.%I; -- base_table_name, base_count_column, base_count_column, base_pk, linked_fk
+					update %I set %I=%I+1 where %I=NEW.%I; -- base_table_name, base_count_column, base_count_column, base_pk, linked_fk
 				ELSIF TG_OP='TRUNCATE' then
-					update %I set %I=0;
+					update %I set %I=0; -- base_table_name, base_count_column
 				END IF;
 				RETURN NEW;
 			END;
 			$inner_trg$ LANGUAGE plpgsql;
 		$fun$,
-			id, -- function name
-			quote_ident(base_table_name), quote_ident(base_count_column), quote_ident(base_count_column), quote_ident(base_pk), quote_ident(linked_fk),  -- update operation for insert
-			quote_ident(base_table_name), quote_ident(base_count_column), quote_ident(base_count_column), quote_ident(base_pk), quote_ident(linked_fk),  -- update operation for delete
-			quote_ident(linked_fk), quote_ident(linked_fk),  -- if condition for update
-			quote_ident(base_table_name), quote_ident(base_count_column), quote_ident(base_count_column), quote_ident(base_pk), quote_ident(linked_fk),  -- update operation for update/row 1
-			quote_ident(base_table_name), quote_ident(base_count_column), quote_ident(base_count_column), quote_ident(base_pk), quote_ident(linked_fk),  -- update operation for update/row 2
-			quote_ident(base_table_name), quote_ident(base_count_column)  -- update operation for truncate
+			id,
+			base_table_name, base_count_column, base_count_column, base_pk, linked_fk,
+			base_table_name, base_count_column, base_count_column, base_pk, linked_fk,
+			linked_fk, linked_fk,
+			base_table_name, base_count_column, base_count_column, base_pk, linked_fk,
+			base_table_name, base_count_column, base_count_column, base_pk, linked_fk,
+			base_table_name, base_count_column
 		);
 
 	execute format($inner_proc$
-		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"()
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
 		LANGUAGE plpgsql
 		AS $inner_proc2$
 			begin
-			    update %I set %I = sub.cpt
+			    update %I set %I = sub.cpt -- base_table_name, base_count_column
 				from (
-					select %I as id, count(*) as cpt
-					from %I
-					group by %I
+					select %I as id, count(*) as cpt -- linked_fk
+					from %I -- linked_table_name
+					group by %I -- linked_fk
 				) as sub
-				where %I.%I = sub.id;
+				where %I.%I = sub.id; -- base_table_name, base_pk
 			end;
 			$inner_proc2$;
 		$inner_proc$,
 		id, -- function name
-		quote_ident(base_table_name), quote_ident(base_count_column),
-		quote_ident(linked_fk),
-		quote_ident(linked_table_name),
-		quote_ident(linked_fk),
-		quote_ident(base_table_name), quote_ident(base_pk)
+		base_table_name, base_count_column,
+		linked_fk,
+		linked_table_name,
+		linked_fk,
+		base_table_name, base_pk
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_count_trg_%I
-		after delete or insert or update ON %I
+		CREATE or replace TRIGGER _pgf_internal_count_trg_%I -- id
+		after delete or insert or update ON %I -- linked_table_name
 		FOR EACH ROW
-		execute procedure _pgf_internal_count_trgfun_%I();
+		execute procedure _pgf_internal_count_trgfun_%I(); -- id
 		$trg$,
-		id, -- function name
+		id,
 		linked_table_name,
-		id -- trigger function name
+		id
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_count_trg_truncate_%I
-		after truncate ON %I
+		CREATE or replace TRIGGER _pgf_internal_count_trg_truncate_%I -- id
+		after truncate ON %I -- linked_table_name
 		FOR EACH STATEMENT
-		execute procedure _pgf_internal_count_trgfun_%I();
+		execute procedure _pgf_internal_count_trgfun_%I(); -- id
 		$trg$,
-		id, -- trigger name
+		id,
 		linked_table_name,
-		id -- trigger function name
+		id
 	);
 
 	call pgf_refresh(id);
