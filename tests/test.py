@@ -110,15 +110,18 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("drop table if exists b cascade;");
                 self.cur.execute("drop table if exists c cascade;");
                 self.cur.execute("drop table if exists intersect_table cascade;");
-                self.cur.execute("create table a(column1 text, column2 int);")
-                self.cur.execute("create table b(column1 text, column2 int);")
-                self.cur.execute("create table c(column1 text, column2 int);")
+                self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
+                self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
+                self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
                 self.cur.execute("call pgf_intersect_table(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
 
             case _:
                 raise ValueError(f"Invalid Argument: {kind}")
         self.cur.execute("commit");
     
+    def drop_formula(self, id):
+        self.cur.execute('call pgf_drop(%s)', (id,))
+
     # --------------------------------------------------------------------
     # COMMUN FUNCTIONS TESTS
     # --------------------------------------------------------------------
@@ -639,7 +642,8 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['name'], None)
         
     def test_pgf_intersect_table(self):
-        self.create_formula('intersect_table', 'intersect_table1');
+        formula_id = 'intersect_table1'
+        self.create_formula('intersect_table', formula_id);
 
         # add row1 in each table --> expect 1 row in intersect_table
         self.cur.execute("insert into a(column1, column2) values('row1', 10);")
@@ -660,7 +664,33 @@ class TestModule(unittest.TestCase):
         # delete row1 from a single table --> expect 1 row in intersect_table
         self.cur.execute("delete from c where (column1, column2) = ('row1', 10);")
         self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
-        self.cur.execute("commit");
+
+        self.drop_formula(formula_id)
+
+    def test_pgf_intersect_table_duplicate_rows(self):
+        formula_id = 'intersect_table1'
+        self.create_formula('intersect_table', formula_id);
+
+        self.cur.execute("insert into a(column1, column2, column3) values('row1', 10, '1');")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+
+        self.cur.execute("insert into b(column1, column2, column3) values('row1', 10, '1');")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+
+        self.cur.execute("insert into c(column1, column2, column3) values('row1', 10, '1');")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+
+        self.cur.execute("insert into a(column1, column2, column3) values('row1', 10, '2');")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+
+        self.cur.execute("delete from a where (column1, column2, column3) = ('row1', 10, '1');")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+
+        self.cur.execute("delete from a where (column1, column2, column3) = ('row1', 10, '2');")
+        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+
+        self.drop_formula(formula_id)
+
 
 
 if __name__ == '__main__':

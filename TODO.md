@@ -2,14 +2,14 @@
 Functions to implement:
   
 **Aggregate data into a single database field**
-* 🟠TODO : SUM
-* 🟢DONE : COUNT
-* 🟠TODO : MIN
-* 🟠TODO : MAX
-* 🟠TODO : ID_OF_MIN
-* 🟠TODO : ID_OF_MAX
-* 🟠TODO : ARRAY_AGG
-* 🟠TODO : STRING_AGG
+  * 🟠TODO : SUM
+  * 🟢DONE : COUNT
+  * 🟠TODO : MIN
+  * 🟠TODO : MAX
+  * 🟠TODO : ID_OF_MIN
+  * 🟠TODO : ID_OF_MAX
+  * 🟠TODO : ARRAY_AGG
+  * 🟠TODO : STRING_AGG
 
 **Aggregate data into a dedicated table**:
   * 🟢DONE : MINMAX_TABLE
@@ -20,13 +20,13 @@ Functions to implement:
 **Merge, split, or join tables:**
   * 🟢DONE : INHERITANCE_TABLE
   * 🟠TODO : UNION_TABLE
-  * 🟠TODO : INTERSECT_TABLE
+  * 🟢DONE : INTERSECT_TABLE
   * 🟠TODO : EXCEPT_TABLE
   
 **Synchronize database fields:**
-* 🟠TODO : JOIN
-* 🟢DONE : SYNC
-* 🟠TODO : JSON_FIELD
+  * 🟠TODO : JOIN
+  * 🟢DONE : SYNC
+  * 🟠TODO : JSON_FIELD
 
 **Auditing changes:**
   * 🟢DONE : REVDATE
