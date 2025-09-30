@@ -303,10 +303,6 @@ END;
 $proc$;
 
 
-
-
-
-
 --------------------------------------------------------------------------------
 -- COUNT
 --------------------------------------------------------------------------------
@@ -394,6 +390,109 @@ BEGIN
 		after truncate ON %I -- linked_table_name
 		FOR EACH STATEMENT
 		execute procedure _pgf_internal_count_trgfun_%I(); -- id
+		$trg$,
+		id,
+		linked_table_name,
+		id
+	);
+
+	call pgf_refresh(id);
+
+END;
+$proc$;
+
+
+--------------------------------------------------------------------------------
+-- SUM
+--------------------------------------------------------------------------------
+CREATE or replace PROCEDURE pgf_sum (
+	id TEXT,
+    base_table_name TEXT,
+    base_pk TEXT,
+    base_aggregate_column TEXT,
+    linked_table_name TEXT,
+    linked_fk TEXT,
+	linked_value_column TEXT -- column to be summed
+)
+LANGUAGE plpgsql AS $proc$
+BEGIN
+	call _pgf_internal_insert_metadata(id, 'sum', jsonb_build_object(
+		'base_table_name', base_table_name,
+		'base_pk', base_pk,
+		'base_aggregate_column', base_aggregate_column,
+		'linked_table_name', linked_table_name,
+		'linked_fk', linked_fk,
+		'linked_value_column', linked_value_column
+	));
+
+	execute format($fun$
+		CREATE OR REPLACE FUNCTION _pgf_internal_sum_trgfun_%I() -- id
+		RETURNS TRIGGER AS $inner_trg$
+			BEGIN
+				IF TG_OP='INSERT' then
+			    	update %I set %I=%I+NEW.%I where %I=NEW.%I; -- base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+				ELSIF TG_OP='DELETE' then
+					update %I set %I=%I-OLD.%I where %I=OLD.%I; -- base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+				ELSIF TG_OP='UPDATE' and OLD.%I <> NEW.%I then -- linked_fk, linked_fk
+					update %I set %I=%I-OLD.%I where %I=OLD.%I; -- base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+					update %I set %I=%I+NEW.%I where %I=NEW.%I; -- base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+				ELSIF TG_OP = 'UPDATE' and OLD.%I <> NEW.%I then -- linked_value_column, linked_value_column
+					update %I set %I = %I - OLD.%I + NEW.%I where %I = OLD.%I; -- base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, linked_value_column, base_pk, linked_fk
+				ELSIF TG_OP='TRUNCATE' then
+					update %I set %I=0; -- base_table_name, base_aggregate_column
+				END IF;
+				RETURN NEW;
+			END;
+			$inner_trg$ LANGUAGE plpgsql;
+		$fun$
+			, id
+			, base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+			, base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+			, linked_fk, linked_fk
+			, base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+			, base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+			, base_table_name, base_aggregate_column
+		);
+
+	execute format($inner_proc$
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
+		LANGUAGE plpgsql
+		AS $inner_proc2$
+			begin
+			    update %I set %I = sub.cpt -- base_table_name, base_aggregate_column
+				from (
+					select %I as id, sum(%I) as cpt -- linked_fk, linked_value_column
+					from %I -- linked_table_name
+					group by %I -- linked_fk
+				) as sub
+				where %I.%I = sub.id; -- base_table_name, base_pk
+			end;
+			$inner_proc2$;
+		$inner_proc$
+		, id -- function name
+		, base_table_name, base_aggregate_column
+		, linked_fk, linked_value_column
+		, linked_table_name
+		, linked_fk
+		, base_table_name, base_pk
+	);
+
+    execute format($trg$
+		CREATE or replace TRIGGER _pgf_internal_sum_trg_%I -- id
+		after delete or insert or update ON %I -- linked_table_name
+		FOR EACH ROW
+		execute procedure _pgf_internal_sum_trgfun_%I(); -- id
+		$trg$,
+		id,
+		linked_table_name,
+		id
+	);
+
+    execute format($trg$
+		CREATE or replace TRIGGER _pgf_internal_sum_trg_truncate_%I -- id
+		after truncate ON %I -- linked_table_name
+		FOR EACH STATEMENT
+		execute procedure _pgf_internal_sum_trgfun_%I(); -- id
 		$trg$,
 		id,
 		linked_table_name,

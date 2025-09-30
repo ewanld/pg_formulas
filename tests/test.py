@@ -75,6 +75,13 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
                 self.cur.execute(f"call pgf_count(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
 
+            case 'sum':
+                self.cur.execute("drop table if exists invoice cascade;");
+                self.cur.execute("drop table if exists customer cascade;");
+                self.cur.execute("create table customer (id int PRIMARY KEY, name text, sum_amount numeric default 0);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
+                self.cur.execute(f"call pgf_sum(%s, 'customer', 'id', 'sum_amount', 'invoice', 'customer_id', 'amount');", (id,))
+
             case 'minmax_table':
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute("drop table if exists invoice cascade;");
@@ -226,6 +233,30 @@ class TestModule(unittest.TestCase):
         # self.cur.execute("drop table if exists invoice cascade;");
         # self.cur.execute("drop table if exists customer cascade;");
 
+    def test_sum(self):
+        formula_id = 'customer_invoices_sum'
+        self.create_formula('sum', formula_id)
+
+        # set up test data
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test : insert invoice
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.5)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+
+        # test : delete invoice
+        self.cur.execute("delete from invoice where id = 1")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
+        self.cur.execute("delete from invoice where id = 2")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 0.0)
+
+        # test : update invoice amount
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 5', 1, 5.0)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
 
 
     def test_minmax_table(self):
