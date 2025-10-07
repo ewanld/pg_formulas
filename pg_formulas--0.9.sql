@@ -318,7 +318,7 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_revdate_trg_%I
+		CREATE TRIGGER _pgf_internal_revdate_trg_%I
 		before insert or UPDATE ON %I
 		FOR EACH ROW
 		execute procedure _pgf_internal_revdate_trgfun_%I();
@@ -405,7 +405,7 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_count_trg_%I -- id
+		CREATE TRIGGER _pgf_internal_count_trg_%I -- id
 		after delete or insert or update ON %I -- linked_table_name
 		FOR EACH ROW
 		execute procedure _pgf_internal_count_trgfun_%I(); -- id
@@ -416,7 +416,7 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_count_trg_truncate_%I -- id
+		CREATE TRIGGER _pgf_internal_count_trg_truncate_%I -- id
 		after truncate ON %I -- linked_table_name
 		FOR EACH STATEMENT
 		execute procedure _pgf_internal_count_trgfun_%I(); -- id
@@ -592,7 +592,7 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_sum_trg_%I -- id
+		CREATE TRIGGER _pgf_internal_sum_trg_%I -- id
 		after delete or insert or update ON %I -- linked_table_name
 		FOR EACH ROW
 		execute procedure _pgf_internal_sum_trgfun_%I(); -- id
@@ -603,7 +603,7 @@ BEGIN
 	);
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_sum_trg_truncate_%I -- id
+		CREATE TRIGGER _pgf_internal_sum_trg_truncate_%I -- id
 		after truncate ON %I -- linked_table_name
 		FOR EACH STATEMENT
 		execute procedure _pgf_internal_sum_trgfun_%I(); -- id
@@ -840,7 +840,7 @@ BEGIN
 	execute str;
 
     execute format($trg$
-		CREATE or replace TRIGGER _pgf_internal_minmax_table_trg_%I
+		CREATE TRIGGER _pgf_internal_minmax_table_trg_%I
 		after delete or insert or update ON %I
 		FOR EACH ROW
 		execute procedure _pgf_internal_minmax_table_trgfun_%I();
