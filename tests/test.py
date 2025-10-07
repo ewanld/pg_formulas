@@ -133,19 +133,20 @@ class TestModule(unittest.TestCase):
     # COMMUN FUNCTIONS TESTS
     # --------------------------------------------------------------------
     def test_enable_disable_drop(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync', 'sum']
+        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync', 'sum', 'intersect_table']
         for kind in kinds:
-            id = f'{kind}_id'
-            self.create_formula(kind, id)
-            self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
-            self.cur.execute("commit");
-            self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
-            self.cur.execute("commit");
-            self.cur.execute("call pgf_set_enabled(%s, false)", (id,));
-            self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
-            self.cur.execute("call pgf_drop(%s)", (id,));
-            self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
-            self.cur.execute("commit");
+            for i in range(1, 2):
+                id = f'{kind}_id'
+                self.create_formula(kind, id)
+                self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
+                self.cur.execute("commit");
+                self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
+                self.cur.execute("commit");
+                self.cur.execute("call pgf_set_enabled(%s, false)", (id,));
+                self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
+                self.cur.execute("call pgf_drop(%s)", (id,));
+                self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
+                self.cur.execute("commit");
     
     # --------------------------------------------------------------------
     # FORMULA TESTS

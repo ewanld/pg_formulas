@@ -177,7 +177,11 @@ begin
 		execute format('DROP FUNCTION IF EXISTS _pgf_internal_sync_trgfun_%I();', id);
 
 	elsif kind = 'intersect_table' then
-		-- TODO
+		sub_tables := _pgf_internal_jsonb_to_text_array(args->'table_names');
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			EXECUTE format('DROP TRIGGER IF EXISTS _pgf_internal_intersect_table_trg_%I_%I ON %I;', id, sub_tables[i], sub_tables[i]);
+			EXECUTE format('DROP FUNCTION IF EXISTS _pgf_internal_intersect_table_trgfun_%I_%I;', id, sub_tables[i]);
+		end loop;
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
@@ -276,7 +280,10 @@ begin
 		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_sync_trg_%I;', table_name, enable_fragment, id);
 	
 	elsif kind = 'intersect_table' then
-		-- TODO
+		sub_tables := _pgf_internal_jsonb_to_text_array(args->'table_names');
+		FOR i IN 1..array_length(sub_tables, 1) LOOP
+			EXECUTE format('ALTER TABLE %I %s TRIGGER _pgf_internal_intersect_table_trg_%I_%I;', sub_tables[i], enable_fragment, id, sub_tables[i]);
+		end loop;
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
