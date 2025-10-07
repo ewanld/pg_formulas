@@ -150,7 +150,7 @@ jobs:
       run: |
         python -m unittest discover -s tests -v
 
-test-pg16:
+  test-pg16:
     runs-on: ubuntu-latest
 
     services:
@@ -183,7 +183,7 @@ test-pg16:
       run: |
         python -m unittest discover -s tests -v
 
-test-pg17:
+  test-pg17:
     runs-on: ubuntu-latest
 
     services:
@@ -216,7 +216,7 @@ test-pg17:
       run: |
         python -m unittest discover -s tests -v
 
-test-pg18:
+  test-pg18:
     runs-on: ubuntu-latest
 
     services:
