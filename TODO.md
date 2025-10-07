@@ -2,7 +2,7 @@
 Functions to implement:
   
 **Aggregate data into a single database field**
-  * 🟠TODO : SUM
+  * 🟢DONE : SUM
   * 🟢DONE : COUNT
   * 🟠TODO : MIN
   * 🟠TODO : MAX

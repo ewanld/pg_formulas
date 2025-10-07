@@ -133,7 +133,7 @@ class TestModule(unittest.TestCase):
     # COMMUN FUNCTIONS TESTS
     # --------------------------------------------------------------------
     def test_enable_disable_drop(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync']
+        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync', 'sum']
         for kind in kinds:
             id = f'{kind}_id'
             self.create_formula(kind, id)
@@ -233,8 +233,8 @@ class TestModule(unittest.TestCase):
         # self.cur.execute("drop table if exists invoice cascade;");
         # self.cur.execute("drop table if exists customer cascade;");
 
-    def test_sum(self):
-        formula_id = 'customer_invoices_sum'
+    def test_sum_insert_delete(self):
+        formula_id = 'sum1'
         self.create_formula('sum', formula_id)
 
         # set up test data
@@ -253,16 +253,59 @@ class TestModule(unittest.TestCase):
         self.cur.execute("delete from invoice where id = 2")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 0.0)
 
-        # test : update invoice amount
+    def test_sum_update(self):
+        formula_id = 'sum2'
+        self.create_formula('sum', formula_id)
+
+        # set up test data
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 5', 1, 5.0)")
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.0)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.0)
+
+        # test : update invoice amount
+        self.cur.execute("update invoice set amount=8.0 where id=1;")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 13.0)
+
+        # test : update invoice name -> expected no change 
+        self.cur.execute("update invoice set name='invoice 1 new' where id=1;")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 13.0)
+        
+        # test : update invoice customer
+        self.cur.execute("update invoice set customer_id=2 where id=1;")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.0)
+        self.assert_sql_equal("select sum_amount from customer where id=2;", 8.0)
+        
+    def test_sum_insert_with_filter(self):
+        formula_id = 'sum_insert_with_filter'
+        self.cur.execute("drop table if exists invoice cascade;");
+        self.cur.execute("drop table if exists customer cascade;");
+        self.cur.execute("create table customer (id int PRIMARY KEY, name text, sum_amount numeric default 0);")
+        self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric, deleted boolean default false);")
+        self.cur.execute(f"call pgf_sum(%s, 'customer', 'id', 'sum_amount', 'invoice', 'customer_id', 'amount', jsonb_build_object('filter', 'deleted = false'));", (formula_id,))
+
+        # set up test data
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test : insert invoice
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.5)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+        self.cur.execute("insert into invoice (id, name, customer_id, amount, deleted) values(3, 'invoice 3', 1, 5.5, true)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+
+        # test : delete invoice
+        self.cur.execute("delete from invoice where id = 1")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
+        self.cur.execute("delete from invoice where id = 3")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
 
 
     def test_minmax_table(self):
         formula_id = 'customer_invoices_agg'
         self.create_formula('minmax_table', formula_id)
-
 
         # test 1 : insert invoices
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values"
@@ -699,7 +742,7 @@ class TestModule(unittest.TestCase):
         self.drop_formula(formula_id)
 
     def test_pgf_intersect_table_duplicate_rows(self):
-        formula_id = 'intersect_table1'
+        formula_id = 'intersect_table2'
         self.create_formula('intersect_table', formula_id);
 
         self.cur.execute("insert into a(column1, column2, column3) values('row1', 10, '1');")
