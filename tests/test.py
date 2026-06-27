@@ -1019,7 +1019,7 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['customer_name'], None)
         self.assertEqual(record['name'], None)
         
-    def test_pgf_intersect_table(self):
+    def test_intersect_table(self):
         formula_id = 'intersect_table1'
         self.create_formula('intersect_table', formula_id);
 
@@ -1046,7 +1046,7 @@ class TestModule(unittest.TestCase):
         self.drop_formula(formula_id)
 
     # test the case when a single table has duplicate rows.
-    def test_pgf_intersect_table_duplicate_rows(self):
+    def test_intersect_table_duplicate_rows(self):
         formula_id = 'intersect_table2'
         self.create_formula('intersect_table', formula_id);
 
@@ -1070,7 +1070,7 @@ class TestModule(unittest.TestCase):
 
         self.drop_formula(formula_id)
 
-    def test_pgf_union_table(self):
+    def test_union_table(self):
         formula_id = 'union_table1'
         self.create_formula('union_table', formula_id);
 
