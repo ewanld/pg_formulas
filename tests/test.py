@@ -78,9 +78,16 @@ class TestModule(unittest.TestCase):
             case 'sum':
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("create table customer (id int PRIMARY KEY, name text, sum_amount numeric default 0);")
+                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default 0);")
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                self.cur.execute(f"call pgf_sum(%s, 'customer', 'id', 'sum_amount', 'invoice', 'customer_id', 'amount');", (id,))
+                self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
+
+            case 'min' | 'max':
+                self.cur.execute("drop table if exists invoice cascade;");
+                self.cur.execute("drop table if exists customer cascade;");
+                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default NULL);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
+                self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
 
             case 'minmax_table':
                 self.cur.execute("drop table if exists customer cascade;");
@@ -249,6 +256,10 @@ class TestModule(unittest.TestCase):
         self.create_formula('sum', formula_id)
 
         # set up test data
+        # customer
+        # customer,\n1, customer A\n2, customer B
+        # invoice
+        # invoice,\n
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("commit;")
 
@@ -296,10 +307,17 @@ class TestModule(unittest.TestCase):
         self.cur.execute(f"call pgf_sum(%s, 'customer', 'id', 'sum_amount', 'invoice', 'customer_id', 'amount', jsonb_build_object('filter', 'deleted = false'));", (formula_id,))
 
         # set up test data
+        # Contents of invoice table after setup:
+        # (empty)
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("commit;")
 
         # test : insert invoice
+        # Contents of invoice table after insertions:
+        # | id | name      | customer_id | amount | deleted |
+        # | 1  | invoice 1 | 1           | 10.0   | false   |
+        # | 2  | invoice 2 | 1           | 5.5    | false   |
+        # | 3  | invoice 3 | 1           | 5.5    | true    |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.5)")
@@ -308,10 +326,274 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
 
         # test : delete invoice
+        # Contents of invoice table after deletes:
+        # | id | name      | customer_id | amount | deleted |
+        # | 2  | invoice 2 | 1           | 5.5    | false   |
         self.cur.execute("delete from invoice where id = 1")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
         self.cur.execute("delete from invoice where id = 3")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
+
+    def test_min(self):
+        formula_id = 'min1'
+        self.create_formula('min', formula_id)
+
+        # set up test data
+        # Contents of customer table:
+        # | id  | name |
+        # | --- | --- |
+        # | 1   | customer A |
+        # | 2   | customer B |
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test : insert first invoice for customer: expected min_amount set to invoice amount
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 2, 8.0)")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : insert new invoice with amount > min_amount : expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 11.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(3, 'invoice 3', 1, 11.0)")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        
+        # test : insert new invoice with amount < min_amount : expected updated min_value
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 11.0 |
+        # | 4 | invoice 4 | 1 | 5.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(4, 'invoice 4', 1, 5.0)")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 5.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount < min amount): expected updated min_value
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 4.0 |
+        self.cur.execute("update invoice set amount = 4.0 where id=4")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 4.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount < min amount): expected updated min_value
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 4.0 |
+        self.cur.execute("update invoice set amount = 3.0 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount = min amount): expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set amount = 3.0 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount = min amount): expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 2.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set amount = 3.0 where id=4")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount < min amount): expected updated min_value
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 2.0 |
+        # | 4 | invoice 4 | 1 | 2.0 |
+        self.cur.execute("update invoice set amount = 2.0 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 2.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount = min amount): expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 2.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set amount = 2.0 where id=4")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 2.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+    
+        # test : update invoice amount (new amount > min amount): expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set amount = 3.0 where id=4")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 2.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount > min amount): expected updated min_value
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 2 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set amount = 3.0 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice FK
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 2 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set customer_id = 2 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 3.0)
+
+        # test : update invoice FK
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 1 | 8.0 |
+        # | 3 | invoice 3 | 2 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set customer_id = 1 where id=2")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 3.0)
+
+        # test : update invoice FK
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 1 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set customer_id = 1 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        
+        # test : update invoice FK
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set customer_id = 2 where id=2")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice FK
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 2 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 3.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set customer_id = 2 where id=1")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : update invoice FK + amount
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 2 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 2 | 4.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("update invoice set customer_id=2, amount=4.0 where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 4.0)
+
+        # test : delete invoice (with amount > min_amount): expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 2 | 4.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("delete from invoice where id=1")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 4.0)
+
+        # test : delete invoice (with amount = min_amount): expected min_amount updated
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("delete from invoice where id=3")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+
+        # test : delete invoice (with amount = min_amount): expected min_amount updated
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 4 | invoice 4 | 1 | 3.0 |
+        self.cur.execute("delete from invoice where id=2")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+
+        # test : delete invoice (with amount = min_amount): expected min_amount updated
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 5.0 |
+        # | 2 | invoice 2 | 1 | 4.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 5.0)")
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 4.0)")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.cur.execute("delete from invoice where id=4")
+        self.assert_sql_equal("select min_amount from customer where id=1;", 4.0)
+        self.assert_sql_equal("select min_amount from customer where id=2;", None)
 
 
     def test_minmax_table(self):

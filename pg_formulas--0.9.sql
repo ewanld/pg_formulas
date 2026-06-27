@@ -425,6 +425,7 @@ BEGIN
 		LANGUAGE plpgsql
 		AS $inner_proc2$
 			begin
+				update %I set %I = 0; -- base_table_name, base_count_column
 			    update %I set %I = sub.cpt -- base_table_name, base_count_column
 				from (
 					select %I as id, count(*) as cpt -- linked_fk
@@ -436,6 +437,7 @@ BEGIN
 			$inner_proc2$;
 		$inner_proc$,
 		id, -- function name
+		base_table_name, base_count_column,
 		base_table_name, base_count_column,
 		linked_fk,
 		linked_table_name,
@@ -616,6 +618,7 @@ BEGIN
 				from (
 					select %I as id, sum(%I) as cpt -- linked_fk, linked_value_column
 					from %I -- linked_table_name
+					where %s -- row_filter
 					group by %I -- linked_fk
 				) as sub
 				where %I.%I = sub.id; -- base_table_name, base_pk
@@ -626,6 +629,7 @@ BEGIN
 		, base_table_name, base_aggregate_column
 		, linked_fk, linked_value_column
 		, linked_table_name
+		, row_filter
 		, linked_fk
 		, base_table_name, base_pk
 	);
@@ -646,6 +650,177 @@ BEGIN
 		after truncate ON %I -- linked_table_name
 		FOR EACH STATEMENT
 		execute procedure _pgf_internal_sum_trgfun_%I(); -- id
+		$trg$,
+		id,
+		linked_table_name,
+		id
+	);
+
+	call pgf_refresh(id);
+
+END;
+$proc$;
+
+
+--------------------------------------------------------------------------------
+-- MIN
+--------------------------------------------------------------------------------
+CREATE or replace PROCEDURE pgf_min (
+	id TEXT,
+    base_table_name TEXT,
+    base_pk TEXT,
+    base_aggregate_column TEXT,
+    linked_table_name TEXT,
+    linked_fk TEXT,
+	linked_value_column TEXT, -- column to be searched for min value
+	options JSONB default '{}'::JSONB
+)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+	row_filter TEXT;
+BEGIN
+	-- set default values for optional arguments
+	options := jsonb_build_object(
+		'filter', 'true'
+	) || options;
+	row_filter := options->>'filter';
+	if row_filter is null or row_filter = '' then
+		row_filter := 'true';
+	end if;
+
+	call _pgf_internal_insert_metadata(id, 'min', jsonb_build_object(
+		'base_table_name', base_table_name,
+		'base_pk', base_pk,
+		'base_aggregate_column', base_aggregate_column,
+		'linked_table_name', linked_table_name,
+		'linked_fk', linked_fk,
+		'linked_value_column', linked_value_column,
+		'options', options
+	));
+
+	execute format($fun$
+		CREATE OR REPLACE FUNCTION _pgf_internal_min_trgfun_%I() -- id
+		RETURNS TRIGGER AS $inner_trg$
+		DECLARE
+			old_row_matches_filter boolean := true;
+			new_row_matches_filter boolean := true;
+		BEGIN
+			/* test if OLD row matches filter */
+			select case when count(*)=1 then true else false end into old_row_matches_filter from (
+				select * from (
+					select (OLD.*)
+				) t
+				where %s -- row_filter
+			) t2;
+
+			/* test if NEW row matches filter */
+			select case when count(*)=1 then true else false end into new_row_matches_filter from (
+				select * from (
+					select NEW.*
+				) t
+				where %s -- row_filter
+			) t2;
+
+			IF TG_OP='INSERT' and new_row_matches_filter then
+				update %I set %I=LEAST(%I, NEW.%I) where %I=NEW.%I; -- base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+			ELSIF TG_OP='DELETE' and old_row_matches_filter then
+				update %I set %I=( -- base_table_name, base_aggregate_column
+					case when OLD.%I > %I then %I -- linked_value_column, base_aggregate_column, base_aggregate_column
+					else (select MIN(%I) from %I where %I=OLD.%I and (%s)) -- linked_value_column, linked_table_name, linked_fk, linked_fk, row_filter
+					end) 
+				where %I=OLD.%I; -- base_pk, linked_fk
+			ELSIF TG_OP='UPDATE' then
+				/* Case update : recompute the min for both OLD and NEW rows */
+				/* TODO : could be optimized further */
+				update %I set %I = ( -- base_table_name, base_aggregate_column
+					select MIN(%I) -- linked_value_column
+					from %I -- linked_table_name
+					WHERE %I = OLD.%I -- linked_fk, linked_fk
+					AND (%s) -- row_filter
+				)
+				where %I = OLD.%I -- base_pk, linked_fk
+				;
+				update %I set %I = ( -- base_table_name, base_aggregate_column
+					select MIN(%I) -- linked_value_column
+					from %I -- linked_table_name
+					WHERE %I = NEW.%I -- linked_fk, linked_fk
+					AND (%s) -- row_filter
+				)
+				where %I = NEW.%I -- base_pk, linked_fk
+				;
+			ELSIF TG_OP='TRUNCATE' then
+				update %I set %I=NULL; -- base_table_name, base_aggregate_column
+			END IF;
+			RETURN NEW;
+		END;
+		$inner_trg$ LANGUAGE plpgsql;
+	$fun$
+        , id
+        , row_filter
+        , row_filter
+        , base_table_name, base_aggregate_column, base_aggregate_column, linked_value_column, base_pk, linked_fk
+        , base_table_name, base_aggregate_column
+        , linked_value_column, base_aggregate_column, base_aggregate_column
+        , linked_value_column, linked_table_name, linked_fk, linked_fk, row_filter
+        , base_pk, linked_fk
+        , base_table_name, base_aggregate_column
+        , linked_value_column
+        , linked_table_name
+        , linked_fk, linked_fk
+        , row_filter
+        , base_pk, linked_fk
+        , base_table_name, base_aggregate_column
+        , linked_value_column
+        , linked_table_name
+        , linked_fk, linked_fk
+        , row_filter
+        , base_pk, linked_fk
+        , base_table_name, base_aggregate_column
+	);
+
+	execute format($inner_proc$
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
+		LANGUAGE plpgsql
+		AS $inner_proc2$
+			begin
+			    update %I set %I = NULL; -- base_table_name, base_aggregate_column
+				update %I set %I = sub.cpt -- base_table_name, base_aggregate_column
+				from (
+					select %I as id, min(%I) as cpt -- linked_fk, linked_value_column
+					from %I -- linked_table_name
+					where %s -- row_filter
+					group by %I -- linked_fk
+				) as sub
+				where %I.%I = sub.id; -- base_table_name, base_pk
+			end;
+			$inner_proc2$;
+		$inner_proc$
+		, id -- function name
+		, base_table_name, base_aggregate_column
+		, base_table_name, base_aggregate_column
+		, linked_fk, linked_value_column
+		, linked_table_name
+		, row_filter
+		, linked_fk
+		, base_table_name, base_pk
+	);
+
+    execute format($trg$
+		CREATE TRIGGER _pgf_internal_min_trg_%I -- id
+		after delete or insert or update ON %I -- linked_table_name
+		FOR EACH ROW
+		execute procedure _pgf_internal_min_trgfun_%I(); -- id
+		$trg$,
+		id,
+		linked_table_name,
+		id
+	);
+
+    execute format($trg$
+		CREATE TRIGGER _pgf_internal_min_trg_truncate_%I -- id
+		after truncate ON %I -- linked_table_name
+		FOR EACH STATEMENT
+		execute procedure _pgf_internal_min_trgfun_%I(); -- id
 		$trg$,
 		id,
 		linked_table_name,
