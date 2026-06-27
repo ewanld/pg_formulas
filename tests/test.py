@@ -607,6 +607,167 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select min_amount from customer where id=2;", None)
 
 
+    def test_max(self):
+        formula_id = 'max1'
+        self.create_formula('max', formula_id)
+
+        # set up test data
+        # Contents of customer table:
+        # | id  | name |
+        # | --- | --- |
+        # | 1   | customer A |
+        # | 2   | customer B |
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test : insert first invoice for customer: expected max_amount set to invoice amount
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", None)
+
+        # test : insert
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 1 | invoice 1 | 1 | 8.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 2, 8.0)")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+        # test : insert new invoice with amount < max_amount : expected no change
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 9.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(3, 'invoice 3', 1, 9.0)")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+        # test : insert new invoice with amount > max_amount : expected updated max_amount
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 9.0 |
+        # | 4 | invoice 4 | 1 | 12.0 |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(4, 'invoice 4', 1, 12.0)")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 12.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount > max_amount): expected updated max_amount
+        # Contents of invoice table:
+        # | id | name | customer_id | amount |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 9.0 |
+        # | 4 | invoice 4 | 1 | 13.0 |
+        self.cur.execute("update invoice set amount = 13.0 where id=4")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount = max_amount): expected no change
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 9.0 |
+        # | 4 | invoice 4 | 1 | 13.0 |
+        self.cur.execute("update invoice set amount = 13.0 where id=4")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+        # test : update invoice amount (new amount < max_amount, invoice is not current max): expected no change
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        # | 4 | invoice 4 | 1 | 13.0 |
+        self.cur.execute("update invoice set amount = 7.0 where id=3")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+
+        # test : update invoice amount (current max invoice decreased): expected updated max_amount
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        # | 4 | invoice 4 | 1 | 9.0 |
+        self.cur.execute("update invoice set amount = 9.0 where id=4")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+
+        # test : update invoice amount (new amount = max_amount): expected no change
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        # | 4 | invoice 4 | 1 | 10.0 |
+        self.cur.execute("update invoice set amount = 10.0 where id=4")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+
+
+        # test : update invoice FK
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 2 | invoice 2 | 2 | 8.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        # | 4 | invoice 4 | 2 | 10.0 |
+        self.cur.execute("update invoice set customer_id = 2 where id=4")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
+
+
+        # test : delete invoice (not current max): expected no change
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        # | 4 | invoice 4 | 2 | 10.0 |
+        self.cur.execute("delete from invoice where id=2")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
+
+        # test : delete invoice (current max): expected max_amount updated to NULL when no remaining invoices
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 1 | 10.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        self.cur.execute("delete from invoice where id=4")
+        self.assert_sql_equal("select max_amount from customer where id=2;", None)
+
+        # test : update invoice FK
+        # Invoice table after step:
+        # | id | name | customer_id | amount |
+        # | --- | --- | --- | --- |
+        # | 1 | invoice 1 | 2 | 10.0 |
+        # | 3 | invoice 3 | 1 | 7.0 |
+        self.cur.execute("update invoice set customer_id = 2 where id=1")
+        self.assert_sql_equal("select max_amount from customer where id=1;", 7.0)
+        self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
+
+
     def test_minmax_table(self):
         formula_id = 'customer_invoices_agg'
         self.create_formula('minmax_table', formula_id)
