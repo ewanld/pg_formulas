@@ -136,7 +136,7 @@ class PerfTestModule(unittest.TestCase):
         self.conn.commit()
         end = time.perf_counter()
         
-        self.cur.execute(f"call pgf_inheritance_table_drop('uvehicle')")
+        self.cur.execute(f"call pgf_drop('uvehicle')")
         
         duration_in_ms = (end - start) * 1000
         #print(f"Execution time: {duration_in_ms} ms")
