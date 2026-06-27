@@ -730,7 +730,7 @@ BEGIN
 					end) 
 				where %I=OLD.%I; -- base_pk, linked_fk
 			ELSIF TG_OP='UPDATE' then
-				/* Case update : recompute the min for both OLD and NEW rows */
+				/* Case update : recompute the min for OLD row + for min row (if FK has changed) */
 				/* TODO : could be optimized further */
 				update %I set %I = ( -- base_table_name, base_aggregate_column
 					select MIN(%I) -- linked_value_column
@@ -738,16 +738,17 @@ BEGIN
 					WHERE %I = OLD.%I -- linked_fk, linked_fk
 					AND (%s) -- row_filter
 				)
-				where %I = OLD.%I -- base_pk, linked_fk
-				;
-				update %I set %I = ( -- base_table_name, base_aggregate_column
-					select MIN(%I) -- linked_value_column
-					from %I -- linked_table_name
-					WHERE %I = NEW.%I -- linked_fk, linked_fk
-					AND (%s) -- row_filter
-				)
-				where %I = NEW.%I -- base_pk, linked_fk
-				;
+				where %I = OLD.%I; -- base_pk, linked_fk
+				
+				if OLD.%I <> NEW.%I then -- linked_fk, linked_fk
+					update %I set %I = ( -- base_table_name, base_aggregate_column
+						select MIN(%I) -- linked_value_column
+						from %I -- linked_table_name
+						WHERE %I = NEW.%I -- linked_fk, linked_fk
+						AND (%s) -- row_filter
+					)
+					where %I = NEW.%I; -- base_pk, linked_fk
+				end if;
 			ELSIF TG_OP='TRUNCATE' then
 				update %I set %I=NULL; -- base_table_name, base_aggregate_column
 			END IF;
@@ -769,6 +770,7 @@ BEGIN
         , linked_fk, linked_fk
         , row_filter
         , base_pk, linked_fk
+        , linked_fk, linked_fk
         , base_table_name, base_aggregate_column
         , linked_value_column
         , linked_table_name
@@ -776,6 +778,7 @@ BEGIN
         , row_filter
         , base_pk, linked_fk
         , base_table_name, base_aggregate_column
+
 	);
 
 	execute format($inner_proc$
@@ -909,16 +912,17 @@ BEGIN
                     WHERE %I = OLD.%I -- linked_fk, linked_fk
                     AND (%s) -- row_filter
                 )
-                where %I = OLD.%I -- base_pk, linked_fk
-                ;
+                where %I = OLD.%I; -- base_pk, linked_fk
+                
+				if OLD.%I <> NEW.%I then -- linked_fk, linked_fk
                 update %I set %I = ( -- base_table_name, base_aggregate_column
                     select MAX(%I) -- linked_value_column
                     from %I -- linked_table_name
                     WHERE %I = NEW.%I -- linked_fk, linked_fk
                     AND (%s) -- row_filter
                 )
-                where %I = NEW.%I -- base_pk, linked_fk
-                ;
+					where %I = NEW.%I; -- base_pk, linked_fk
+				end if;
             ELSIF TG_OP='TRUNCATE' then
                 update %I set %I=NULL; -- base_table_name, base_aggregate_column
             END IF;
@@ -940,6 +944,7 @@ BEGIN
         , linked_fk, linked_fk
         , row_filter
         , base_pk, linked_fk
+        , linked_fk, linked_fk
         , base_table_name, base_aggregate_column
         , linked_value_column
         , linked_table_name
