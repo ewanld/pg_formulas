@@ -122,6 +122,16 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
                 self.cur.execute("call pgf_intersect_table(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
 
+            case 'union_table':
+                self.cur.execute("drop table if exists a cascade;");
+                self.cur.execute("drop table if exists b cascade;");
+                self.cur.execute("drop table if exists c cascade;");
+                self.cur.execute("drop table if exists union_table cascade;");
+                self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
+                self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
+                self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
+                self.cur.execute("call pgf_union_table(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'union_table')", (id,))
+
             case _:
                 raise ValueError(f"Invalid Argument: {kind}")
         self.cur.execute("commit");
@@ -133,7 +143,7 @@ class TestModule(unittest.TestCase):
     # COMMUN FUNCTIONS TESTS
     # --------------------------------------------------------------------
     def test_enable_disable_drop(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync', 'sum', 'intersect_table']
+        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table', 'sync', 'sum', 'intersect_table', 'union_table']
         for kind in kinds:
             for i in range(1, 2):
                 id = f'{kind}_id'
@@ -742,6 +752,7 @@ class TestModule(unittest.TestCase):
 
         self.drop_formula(formula_id)
 
+    # test the case when a single table has duplicate rows.
     def test_pgf_intersect_table_duplicate_rows(self):
         formula_id = 'intersect_table2'
         self.create_formula('intersect_table', formula_id);
@@ -766,7 +777,31 @@ class TestModule(unittest.TestCase):
 
         self.drop_formula(formula_id)
 
+    def test_pgf_union_table(self):
+        formula_id = 'union_table1'
+        self.create_formula('union_table', formula_id);
 
+        # add row1 in each table --> expect 1 row in union_table
+        self.cur.execute("insert into a(column1, column2) values('row1', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        self.cur.execute("insert into b(column1, column2) values('row1', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        self.cur.execute("insert into c(column1, column2) values('row1', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        
+        # add row1 in each table --> expect 2 rows in union_table
+        self.cur.execute("insert into a(column1, column2) values('row2', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 2)
+
+        # delete row1 from all tables --> expect 1 row in union_table
+        self.cur.execute("delete from a where (column1, column2) = ('row1', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 2)
+        self.cur.execute("delete from b where (column1, column2) = ('row1', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 2)
+        self.cur.execute("delete from c where (column1, column2) = ('row1', 10);")
+        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+
+        self.drop_formula(formula_id)
 
 if __name__ == '__main__':
     unittest.main()

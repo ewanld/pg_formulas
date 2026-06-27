@@ -19,7 +19,7 @@ Functions to implement:
 
 **Merge, split, or join tables:**
   * 🟢DONE : INHERITANCE_TABLE
-  * 🟠TODO : UNION_TABLE
+  * 🟢DONE : UNION_TABLE
   * 🟢DONE : INTERSECT_TABLE
   * 🟠TODO : EXCEPT_TABLE
   
@@ -27,6 +27,7 @@ Functions to implement:
   * 🟠TODO : JOIN
   * 🟢DONE : SYNC
   * 🟠TODO : JSON_FIELD
+  * 🟠TODO : DIGEST
 
 **Auditing changes:**
   * 🟢DONE : REVDATE
@@ -50,3 +51,5 @@ Functions to implement:
 * MINMAX_TABLE: test case with no group by column
 * MINMAX_TABLE: refactor: add all column rename arguments into a single hashmap 'rename_columns'
 * ALL: add an option to make created tables unlogged (not written to WAL which is faster but is not crash safe.)
+* COUNT_TABLE: add a 'multidimensional_aggregation' argument with values: ROLLUP or CUBE
+* COUNT : implement filter (use SUM as example)

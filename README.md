@@ -80,11 +80,11 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 **Synchronize database fields:**
   * [JOIN](#JOIN): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table.
-  * [SYNC](#SYNC): Synchronize two fields from the same row.
+  * [SYNC](#SYNC): Synchronize two fields from the same table row.
   * [JSON_FIELD](#JSON): Set the value of a JSONB field to be the contents of a table column.
 
 **Auditing changes:**
-  * [REVDATE](#REVDATE): Automatically update a 'last_modified' column.
+  * [REVDATE](#REVDATE-formula): Automatically update a 'last_modified' column.
   * [AUDIT_TABLE](#AUDIT_TABLE): Populate a history (audit) table.
  
 **Working with trees:**
@@ -347,7 +347,7 @@ Additional options :
 TODO
 
 ## SYNC formula
-**_Synchronize two fields from the same table._**
+**_Synchronize two fields from the same table row._**
 
 ### Syntax
 ```sql
