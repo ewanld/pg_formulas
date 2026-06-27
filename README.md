@@ -279,6 +279,75 @@ After each change to the `listing` table, `product.min_price` is updated automat
 | 2  | Widget B | 200 |
 
 
+## MAX formula
+**_Update a field to represent the max value among linked elements._**
+
+### Syntax
+```sql
+PROCEDURE pgf_max (
+    id TEXT,
+    base_table_name TEXT,
+    base_pk TEXT,
+    base_aggregate_column TEXT,
+    linked_table_name TEXT,
+    linked_fk TEXT,
+    linked_value_column TEXT,
+    options JSONB DEFAULT '{}'
+)
+```
+
+| Argument         | Description |
+|-------------|------ |
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
+| ```base_table_name``` | Name of the base table holding the target (max) field. |
+| ```base_pk``` | Name of the primary key column in the base table. |
+| ```base_aggregate_column``` | Name of the column from the base table that will store the max value. |
+| ```linked_table_name``` | Name of the linked table containing rows to be considered. |
+| ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
+| ```linked_value_column``` | Name of the column in the linked table whose maximum value will be tracked. The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field. |
+| ```options``` | Additional optional arguments, passed as a JSONB object (see available options below). |
+
+Additional options :
+| JSONB field | Default value | Description |
+|-------------|---------------|-------------|
+| ```filter``` | ```'true'``` | SQL expression applied to rows from the linked table. The expression must evaluate to a boolean result. Only rows matching this filter are considered when computing the maximum. The SQL expression can reference columns from the linked table, unprefixed (except for the ```linked_value_column``` column). |
+
+### Example
+From the below tables, we want to maintain `product.max_price` as the maximum `listing.price` for each product.
+
+`product` table:
+| id | name | max_price |
+|----|------|-----------|
+| 1  | Widget A | NULL |
+| 2  | Widget B | NULL |
+
+`listing` table:
+| id | product_id | price |
+|----|------------|-------|
+| 1  | 1          | 100   |
+| 2  | 1          | 50    |
+| 3  | 2          | 200   |
+
+Then from a PostgreSQL shell execute:
+```sql
+call pgf_max(
+    'product_max_price', -- id
+    'product',            -- base_table_name
+    'id',                 -- base_pk
+    'max_price',          -- base_aggregate_column
+    'listing',            -- linked_table_name
+    'product_id',         -- linked_fk
+    'price'               -- linked_value_column
+);
+```
+
+After each change to the `listing` table, `product.max_price` is updated automatically:
+
+| id | name | max_price |
+|----|------|-----------|
+| 1  | Widget A | 50 |
+| 2  | Widget B | 200 |
+
 ## COUNT formula
 **_Update a field that counts the number of linked elements._**
 
@@ -344,6 +413,7 @@ After each change to the `order` table, `customer.order_count` is updated automa
 |----|------|-------------|
 | 1  | John Doe | 2 |
 | 2  | Jane Roe | 1 |
+
 
 
 
