@@ -302,31 +302,42 @@ class TestModule(unittest.TestCase):
         formula_id = 'sum_insert_with_filter'
         self.cur.execute("drop table if exists invoice cascade;");
         self.cur.execute("drop table if exists customer cascade;");
-        self.cur.execute("create table customer (id int PRIMARY KEY, name text, sum_amount numeric default 0);")
+        self.cur.execute("create table customer (id int PRIMARY KEY, name text, sum_amount numeric default 0.0);")
         self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric, deleted boolean default false);")
         self.cur.execute(f"call pgf_sum(%s, 'customer', 'id', 'sum_amount', 'invoice', 'customer_id', 'amount', jsonb_build_object('filter', 'deleted = false'));", (formula_id,))
 
         # set up test data
-        # Contents of invoice table after setup:
-        # (empty)
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("commit;")
 
         # test : insert invoice
-        # Contents of invoice table after insertions:
+        # Contents of invoice table at the end of the step:
+        # | id | name      | customer_id | amount | deleted |
+        # | 1  | invoice 1 | 1           | 10.0   | false   |
+        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
+        self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
+        # self.assert_sql_equal("select sum_amount from customer where id=2;", None)
+
+        # test : insert invoice
+        # Contents of invoice table at the end of the step:
         # | id | name      | customer_id | amount | deleted |
         # | 1  | invoice 1 | 1           | 10.0   | false   |
         # | 2  | invoice 2 | 1           | 5.5    | false   |
         # | 3  | invoice 3 | 1           | 5.5    | true    |
-        self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.5)")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+
+        # test : insert invoice
+        # Contents of invoice table at the end of the step:
+        # | id | name      | customer_id | amount | deleted |
+        # | 1  | invoice 1 | 1           | 10.0   | false   |
+        # | 2  | invoice 2 | 1           | 5.5    | false   |
+        # | 3  | invoice 3 | 1           | 5.5    | true    |
         self.cur.execute("insert into invoice (id, name, customer_id, amount, deleted) values(3, 'invoice 3', 1, 5.5, true)")
         self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
 
         # test : delete invoice
-        # Contents of invoice table after deletes:
+        # Contents of invoice table at the end of the step:
         # | id | name      | customer_id | amount | deleted |
         # | 2  | invoice 2 | 1           | 5.5    | false   |
         self.cur.execute("delete from invoice where id = 1")
