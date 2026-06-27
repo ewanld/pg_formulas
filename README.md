@@ -57,7 +57,7 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 # Formulas
 **Aggregate data into a single database field**
-* [SUM](#SUM-formula) : Update a field that sums linked elements.
+* [SUM](#SUM-formula) : Update a column that sums linked elements.
 * [COUNT](#COUNT-formula) : Update a field that counts the number of linked elements.
 * [MIN](#MIN-formula) : Update a field to represent the min value among linked elements.
 * [MAX](#MAX-formula) : Update a field to represent the max value among linked elements.
@@ -143,6 +143,78 @@ select last_modified from customer where id=1; -- returns the timestamp of the u
 **_Update a column that counts the number of linked elements_**
 
 TODO
+
+
+## SUM formula
+**_Update a field that sums linked elements_**
+
+### Syntax
+```sql
+PROCEDURE pgf_sum (
+    id TEXT,
+    base_table_name TEXT,
+    base_pk TEXT,
+    base_aggregate_column TEXT,
+    linked_table_name TEXT,
+    linked_fk TEXT,
+    linked_value_column TEXT,
+    options JSONB DEFAULT '{}'
+)
+```
+
+| Argument         | Description |
+|-------------|------ |
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
+| ```base_table_name``` | Name of the base table holding the "sum" field.
+| ```base_pk``` | Name of the primary key column in the base table. |
+| ```base_aggregate_column``` | Name of the column from the base table that will store the sum. |
+| ```linked_table_name``` | Name of the linked table containing rows to be summed. |
+| ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
+| ```linked_value_column``` | Name of the numeric column in the linked table whose values are summed. **The column must have a default value of 0, and all insertions must be done with this default value of 0.** |
+| ```options``` | Additional optional arguments, passed as a JSONB object (see available options below). |
+
+Additional options :
+| JSONB field | Default value | Description |
+|-------------|---------------|-------------|
+| ```filter``` | ```'true'``` | SQL expression applied to rows from the linked table. The expression must evaluate to a boolean result. Only rows matching this filter are included in the sum. The SQL expression can reference columns from the linked table, unprefixed (except for the ```linked_value_column``` column). |
+
+### Example
+From the below tables, we want to maintain `customer.total_spent` as the sum of `order.amount` for each customer.
+
+`customer` table:
+| id | name | total_spent |
+|----|------|-------------|
+| 1  | John Doe | 0 |
+| 2  | Jane Roe | 0 |
+
+`order` table:
+| id | customer_id | amount |
+|----|-------------|--------|
+| 1  | 1           | 100 |
+| 2  | 1           | 50  |
+| 3  | 2           | 200 |
+
+Then from a PostgreSQL shell execute:
+```sql
+call pgf_sum(
+    'customer_total_spent', -- id
+    'customer',           -- base_table_name
+    'id',                 -- base_pk
+    'total_spent',        -- base_aggregate_column
+    'order',              -- linked_table_name
+    'customer_id',        -- linked_fk
+    'amount'              -- linked_value_column
+);
+```
+
+After each order (insert/update/delete), the `customer.total_spent` column is updated automatically :
+
+| id | name | total_spent |
+|----|------|-------------|
+| 1  | John Doe | 150 |
+| 2  | Jane Roe | 200 |
+
+
 
 ## MINMAX_TABLE formula
 **_Create an aggregate table that computes, for each group of rows from a given table: the row count, the min and max values, the ID of min and max values_**
