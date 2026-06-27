@@ -346,6 +346,8 @@ CREATE or replace PROCEDURE pgf_count (
 	options JSONB default '{}'::JSONB
 )
 LANGUAGE plpgsql AS $proc$
+DECLARE
+	row_filter TEXT;
 BEGIN
 	-- set default values for optional arguments
 	options := jsonb_build_object(
