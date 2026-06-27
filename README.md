@@ -139,10 +139,7 @@ select last_modified from customer where id=1; -- returns the timestamp of the u
 ```
 
 
-## COUNT formula
-**_Update a column that counts the number of linked elements_**
 
-TODO
 
 
 ## SUM formula
@@ -214,6 +211,72 @@ After each order (insert/update/delete), the `customer.total_spent` column is up
 | 1  | John Doe | 150 |
 | 2  | Jane Roe | 200 |
 
+
+## COUNT formula
+**_Update a field that counts the number of linked elements._**
+
+### Syntax
+```sql
+PROCEDURE pgf_count (
+    id TEXT,
+    base_table_name TEXT,
+    base_pk TEXT,
+    base_count_column TEXT,
+    linked_table_name TEXT,
+    linked_fk TEXT,
+    options JSONB DEFAULT '{}'
+)
+```
+
+| Argument         | Description |
+|-------------|------ |
+| ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
+| ```base_table_name``` | Name of the base table holding the count field. |
+| ```base_pk``` | Name of the primary key column in the base table. |
+| ```base_count_column``` | Name of the column from the base table that will store the count. |
+| ```linked_table_name``` | Name of the linked table containing rows to be counted. |
+| ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
+| ```options``` | Additional optional arguments, passed as a JSONB object (see available options below). |
+
+Additional options :
+| JSONB field | Default value | Description |
+|-------------|---------------|-------------|
+| ```filter``` | ```'true'``` | SQL expression applied to rows from the linked table. The SQL expression must evaulate to a boolean. Only rows matching this filter are included in the count. The expression can reference columns from the linked table (unprefixed). |
+
+### Example
+From the below tables, we want to keep `customer.order_count` updated with the number of orders for each customer.
+
+`customer` table:
+| id | name | order_count |
+|----|------|-------------|
+| 1  | John Doe | 0 |
+| 2  | Jane Roe | 0 |
+
+`order` table:
+| id | customer_id | amount |
+|----|-------------|--------|
+| 1  | 1           | 100 |
+| 2  | 1           | 50  |
+| 3  | 2           | 200 |
+
+Then from a PostgreSQL shell execute:
+```sql
+call pgf_count(
+    'customer_order_count', -- id
+    'customer',             -- base_table_name
+    'id',                   -- base_pk
+    'order_count',          -- base_count_column
+    'order',                -- linked_table_name
+    'customer_id'           -- linked_fk
+);
+```
+
+After each change to the `order` table, `customer.order_count` is updated automatically:
+
+| id | name | order_count |
+|----|------|-------------|
+| 1  | John Doe | 2 |
+| 2  | Jane Roe | 1 |
 
 
 ## MINMAX_TABLE formula
