@@ -57,40 +57,40 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 # Formulas
 **Aggregate data into a single database field**
-* [SUM](#SUM) : Update a field that sums linked elements.
-* [COUNT](#COUNT) : Update a field that counts the number of linked elements.
-* [MIN](#MIN) : Update a field to represent the min value among linked elements.
-* [MAX](#MAX) : Update a field to represent the max value among linked elements.
-* [ID_OF_MIN](#ID_OF_MIN) : Update a field to represent the id of min value among linked elements.
-* [ID_OF_MAX](#ID_OF_MAX) : Update a field to represent the id of max value among linked elements.
-* [ARRAY_AGG](#ARRAY_AGG): Update a field that aggregates linked elements in an ARRAY, similar to the built-in ARRAY_AGG function. Arguments: limit(optional): limit the number of items in the ARRAY.
-* [STRING_AGG](#STRING_AGG): Update a field that joins linked elements in a string, similar to the built-in STRING_AGG function. Arguments: limit(optional): limit the number of items in the string.
+* [SUM](#SUM-formula) : Update a field that sums linked elements.
+* [COUNT](#COUNT-formula) : Update a field that counts the number of linked elements.
+* [MIN](#MIN-formula) : Update a field to represent the min value among linked elements.
+* [MAX](#MAX-formula) : Update a field to represent the max value among linked elements.
+* [ID_OF_MIN](#ID_OF_MIN-formula) : Update a field to represent the id of min value among linked elements.
+* [ID_OF_MAX](#ID_OF_MAX-formula) : Update a field to represent the id of max value among linked elements.
+* [ARRAY_AGG](#ARRAY_AGG-formula): Update a field that aggregates linked elements in an ARRAY, similar to the built-in ARRAY_AGG function. Arguments: limit(optional): limit the number of items in the ARRAY.
+* [STRING_AGG](#STRING_AGG-formula): Update a field that joins linked elements in a string, similar to the built-in STRING_AGG function. Arguments: limit(optional): limit the number of items in the string.
 
 **Aggregate data into a dedicated table**:
-  * [MINMAX_TABLE](#MINMAX_TABLE): Store min and max values from a table (along with the id of those rows), with optional GROUP BY. (If no GROUP BY is provided, it counts all rows.)
-  * [SUM_TABLE](#SUM_TABLE): Sum rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
-  * [COUNT_TABLE](#COUNT_TABLE): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
-  * [TOPN_TABLE](#TOPN_TABLE): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max).
+  * [MINMAX_TABLE](#MINMAX_TABLE-formula): Store min and max values from a table (along with the id of those rows), with optional GROUP BY. (If no GROUP BY is provided, it counts all rows.)
+  * [SUM_TABLE](#SUM_TABLE-formula): Sum rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
+  * [COUNT_TABLE](#COUNT_TABLE-formula): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
+  * [TOPN_TABLE](#TOPN_TABLE-formula): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max).
 
 **Merge, split, or join tables:**
-  * [INHERITANCE_TABLE](#INHERITANCE_TABLE): Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables.
-  * [UNION_TABLE](#UNION_TABLE): Compute the union of multiple tables into one.
-  * [INTERSECT_TABLE](#INTERSECT_TABLE): Compute the intersection of multiple tables into one.
-  * [EXCEPT_TABLE](#EXCEPT_TABLE): Compute the difference of two tables (```A EXCEPT B```).
+  * [INHERITANCE_TABLE](#INHERITANCE_TABLE-formula): Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables.
+  * [UNION_TABLE](#UNION_TABLE-formula): Compute the union of multiple tables into one.
+  * [INTERSECT_TABLE](#INTERSECT_TABLE-formula): Compute the intersection of multiple tables into one.
+  * [EXCEPT_TABLE](#EXCEPT_TABLE-formula): Compute the difference of two tables (```A EXCEPT B```).
 
 **Synchronize database fields:**
-  * [JOIN](#JOIN): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table.
-  * [SYNC](#SYNC): Synchronize two fields from the same table row.
-  * [JSON_FIELD](#JSON): Set the value of a JSONB field to be the contents of a table column.
+  * [JOIN](#JOIN-formula): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table.
+  * [SYNC](#SYNC-formula): Synchronize two fields from the same table row.
+  * [JSON_FIELD](#JSON-formula): Set the value of a JSONB field to be the contents of a table column.
 
 **Auditing changes:**
   * [REVDATE](#REVDATE-formula): Automatically update a 'last_modified' column.
-  * [AUDIT_TABLE](#AUDIT_TABLE): Populate a history (audit) table.
+  * [AUDIT_TABLE](#AUDIT_TABLE-formula): Populate a history (audit) table.
  
 **Working with trees:**
-  * [TREELEVEL](#TREELEVEL): Update a "level" column in a table representing a tree structure.
-  * [TREEPATH](#TREEPATH): Update a "path" column in a table representing a tree structure.
-  * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE): Update a closure table representing all ancestor-descendant pairs for each node.
+  * [TREELEVEL](#TREELEVEL-formula): Update a "level" column in a table representing a tree structure.
+  * [TREEPATH](#TREEPATH-formula): Update a "path" column in a table representing a tree structure.
+  * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE-formula): Update a closure table representing all ancestor-descendant pairs for each node.
 
  
 
