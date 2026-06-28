@@ -788,7 +788,62 @@ Additional options :
 
 ### Example
 
-TODO
+Consider a `users` table with columns `id`, `name`, and `email`:
+
+**Initial setup:**
+```sql
+SELECT pgf_audit_table(
+    'audit_users',
+    'users_audit',
+    ARRAY['users']::TEXT[]
+);
+```
+
+**Step 1: INSERT a new user**
+```sql
+INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com');
+```
+
+Users table:
+| id | name  | email              |
+|----|-------|------------------|
+| 1  | Alice | alice@example.com |
+
+Users audit table:
+| id | table_name | OPERATION | OLD_VALUE                              | NEW_VALUE                                    | event_time          |
+|----|------------|-----------|----------------------------------------|----------------------------------------------|---------------------|
+| 1  | users      | INSERT    | NULL                                   | {"id": 1, "name": "Alice", "email": "alice@example.com"} | 2024-01-15 10:00:00 |
+
+**Step 2: UPDATE the user's email**
+```sql
+UPDATE users SET email = 'alice.new@example.com' WHERE id = 1;
+```
+
+Users table:
+| id | name  | email                  |
+|----|-------|------------------------|
+| 1  | Alice | alice.new@example.com |
+
+Users audit table (cumulative):
+| id | table_name | OPERATION | OLD_VALUE                              | NEW_VALUE                                    | event_time          |
+|----|------------|-----------|----------------------------------------|----------------------------------------------|---------------------|
+| 1  | users      | INSERT    | NULL                                   | {"id": 1, "name": "Alice", "email": "alice@example.com"} | 2024-01-15 10:00:00 |
+| 2  | users      | UPDATE    | {"id": 1, "name": "Alice", "email": "alice@example.com"} | {"id": 1, "name": "Alice", "email": "alice.new@example.com"} | 2024-01-15 10:05:00 |
+
+**Step 3: DELETE the user**
+```sql
+DELETE FROM users WHERE id = 1;
+```
+
+Users table:
+(empty)
+
+Users audit table (cumulative):
+| id | table_name | OPERATION | OLD_VALUE                              | NEW_VALUE                                    | event_time          |
+|----|------------|-----------|----------------------------------------|----------------------------------------------|---------------------|
+| 1  | users      | INSERT    | NULL                                   | {"id": 1, "name": "Alice", "email": "alice@example.com"} | 2024-01-15 10:00:00 |
+| 2  | users      | UPDATE    | {"id": 1, "name": "Alice", "email": "alice@example.com"} | {"id": 1, "name": "Alice", "email": "alice.new@example.com"} | 2024-01-15 10:05:00 |
+| 3  | users      | DELETE    | {"id": 1, "name": "Alice", "email": "alice.new@example.com"} | NULL                                   | 2024-01-15 10:10:00 |
 
 ## SYNC formula
 **_Synchronize two fields from the same table row._**
