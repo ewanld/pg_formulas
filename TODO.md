@@ -52,3 +52,4 @@ Functions to implement:
 * ALL: add an option to make created tables unlogged (not written to WAL which is faster but is not crash safe.)
 * COUNT_TABLE: add a 'multidimensional_aggregation' argument with values: ROLLUP or CUBE
 * COUNT : implement filter (use SUM as example)
+* PGF_MIN, PGF_MAX : add tests with row_filter clause
