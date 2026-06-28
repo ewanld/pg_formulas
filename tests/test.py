@@ -67,47 +67,62 @@ class TestModule(unittest.TestCase):
         return self.cur.fetchone()
     
         # create a test formula in nominal case
-    def create_formula(self, kind, id):
+    def create_tables(self, kind, id, create_formula=True):
         match kind:
             case 'revdate':
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute("create table customer (id SERIAL PRIMARY KEY, name text, last_modified timestamp default null);")
-                self.cur.execute(f"call pgf_revdate(%s, 'customer', 'last_modified')", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'last_modified')", (id,))
 
             case 'count':
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute("create table customer (id int PRIMARY KEY, name text, invoice_count int default 0);")
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
-                self.cur.execute(f"call pgf_count(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
 
             case 'sum':
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default 0);")
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
 
             case 'min' | 'max':
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default NULL);")
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
+
 
             case 'id_of_min' | 'id_of_max':
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount int default NULL);")
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'id', 'customer_id', 'amount');", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'id', 'customer_id', 'amount');", (id,))
+
+            case 'array_agg':
+                self.cur.execute("drop table if exists invoice cascade;");
+                self.cur.execute("drop table if exists customer cascade;");
+                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, invoice_names text[] default NULL);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), visible boolean);")
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', 'invoice_names', 'invoice', 'customer_id', 'name');", (id,))
 
             case 'minmax_table':
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute(f"drop table if exists agg cascade;");
                 self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
-                self.cur.execute(f"call pgf_minmax_table(%s, 'invoice', 'id', 'amount', jsonb_build_object('agg_table', 'agg', 'group_by_column', ARRAY['customer_id', 'country']));", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'invoice', 'id', 'amount', jsonb_build_object('agg_table', 'agg', 'group_by_column', ARRAY['customer_id', 'country']));", (id,))
 
             case 'inheritance_table':
                 self.cur.execute("drop table if exists bike cascade;");
@@ -115,22 +130,26 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("drop table if exists vehicle cascade;");
                 self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
                 self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
-                self.cur.execute("call pgf_inheritance_table(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
             
             case 'audit_table':
                 self.cur.execute("drop table if exists customer cascade;")
                 self.cur.execute("create table customer(id serial primary key, name text, value int);")
-                self.cur.execute("call pgf_audit_table(%s, 'customer_events', ARRAY['customer']);", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer_events', ARRAY['customer']);", (id,))
             
             case 'sync':
                 self.cur.execute("drop table if exists customer cascade;")
                 self.cur.execute("create table customer(id text, customer_name text, name text);")
-                self.cur.execute("call pgf_sync(%s, 'customer', 'name', 'customer_name');", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'name', 'customer_name');", (id,))
 
             case 'treelevel':
                 self.cur.execute("drop table if exists node cascade;");
                 self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
-                self.cur.execute("call pgf_treelevel(%s, 'node', 'id', 'parent_id', 'level')", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'node', 'id', 'parent_id', 'level')", (id,))
 
             case 'intersect_table':
                 self.cur.execute("drop table if exists a cascade;");
@@ -140,7 +159,8 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
                 self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
                 self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("call pgf_intersect_table(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
 
             case 'union_table':
                 self.cur.execute("drop table if exists a cascade;");
@@ -150,7 +170,8 @@ class TestModule(unittest.TestCase):
                 self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
                 self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
                 self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("call pgf_union_table(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'union_table')", (id,))
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'union_table')", (id,))
 
             case _:
                 raise ValueError(f"Invalid Argument: {kind}")
@@ -167,7 +188,7 @@ class TestModule(unittest.TestCase):
         for kind in kinds:
             for i in range(1, 2):
                 id = f'{kind}_id'
-                self.create_formula(kind, id)
+                self.create_tables(kind, id)
                 self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
                 self.cur.execute("commit");
                 self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
@@ -184,7 +205,7 @@ class TestModule(unittest.TestCase):
 
     def test_revdate(self):
         formula_id="customer_last_modified"
-        self.create_formula('revdate', formula_id)
+        self.create_tables('revdate', formula_id)
         self.cur.execute("insert into customer(name) values('Cust1')")
         self.cur.execute("insert into customer(name) values('Cust2')")
         
@@ -216,7 +237,7 @@ class TestModule(unittest.TestCase):
     # data model: customer -1-N-> invoice
     def test_count(self):
         formula_id = 'customer_invoices_count'
-        self.create_formula('count', formula_id)
+        self.create_tables('count', formula_id)
 
         # test 1 : insert invoices
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
@@ -266,7 +287,7 @@ class TestModule(unittest.TestCase):
 
     def test_sum_insert_delete(self):
         formula_id = 'sum1'
-        self.create_formula('sum', formula_id)
+        self.create_tables('sum', formula_id)
 
         # set up test data
         # customer
@@ -290,7 +311,7 @@ class TestModule(unittest.TestCase):
 
     def test_sum_update(self):
         formula_id = 'sum2'
-        self.create_formula('sum', formula_id)
+        self.create_tables('sum', formula_id)
 
         # set up test data
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
@@ -360,7 +381,7 @@ class TestModule(unittest.TestCase):
 
     def test_min(self):
         formula_id = 'min1'
-        self.create_formula('min', formula_id)
+        self.create_tables('min', formula_id)
 
         # set up test data
         # Contents of customer table:
@@ -621,7 +642,7 @@ class TestModule(unittest.TestCase):
 
     def test_id_of_min(self):
         formula_id = 'id_of_min1'
-        self.create_formula('id_of_min', formula_id)
+        self.create_tables('id_of_min', formula_id)
 
         # set up test data
         # Contents of customer table:
@@ -888,7 +909,7 @@ class TestModule(unittest.TestCase):
 
     def test_max(self):
         formula_id = 'max1'
-        self.create_formula('max', formula_id)
+        self.create_tables('max', formula_id)
 
         # set up test data
         # Contents of customer table:
@@ -1046,10 +1067,384 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal("select max_amount from customer where id=1;", 7.0)
         self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
 
+    def test_array_agg_nodistinct_orderbyname_nolimit(self):
+        formula_id = 'test_array_agg_nodistinct_orderbyname_nolimit'
+        self.create_tables('array_agg', formula_id, create_formula=False)
+        self.cur.execute(f"call pgf_array_agg(%s, 'customer', 'id', 'invoice_names', 'invoice', 'customer_id', 'name', jsonb_build_object('distinct', false, 'order_by', 'name asc nulls last'));", (formula_id,))
+
+        # set up test data
+        # Contents of customer table:
+        # | id  | name |
+        # | --- | --- |
+        # | 1   | customer A |
+        # | 2   | customer B |
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (1, 'invoice 1', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (2, 'invoice 2', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (4, 'invoice 4', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 3', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 3", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+    
+        # test: update invoice name
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set name='A invoice 3' where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 2
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=2 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=1 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 2
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=2 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: delete invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("delete from invoice where id=2")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: delete invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("delete from invoice where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice with duplicate name. Expected : duplicated result must be found in array_agg
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 4   | invoice 4  | 1
+        # | 3   | invoice 1  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 1', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+    def test_array_agg_nodistinct_orderbyname_limit(self):
+        formula_id = 'test_array_agg_nodistinct_orderbyname_limit'
+        self.create_tables('array_agg', formula_id, create_formula=False)
+        self.cur.execute(f"call pgf_array_agg(%s, 'customer', 'id', 'invoice_names', 'invoice', 'customer_id', 'name', jsonb_build_object('distinct', false, 'order_by', 'name asc nulls last', 'limit', 2));", (formula_id,))
+
+        # set up test data
+        # Contents of customer table:
+        # | id  | name |
+        # | --- | --- |
+        # | 1   | customer A |
+        # | 2   | customer B |
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (1, 'invoice 1', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (2, 'invoice 2', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (4, 'invoice 4', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 3', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+    
+        # test: update invoice name
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set name='A invoice 3' where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 2
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=2 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=1 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 2
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=2 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: delete invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("delete from invoice where id=2")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: delete invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("delete from invoice where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice with duplicate name. Expected : duplicated result must be found in array_agg
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 4   | invoice 4  | 1
+        # | 3   | invoice 1  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 1', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 1"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+    def test_array_agg_distinct_orderbyname_nolimit(self):
+        formula_id = 'test_array_agg_distinct_orderbyname_nolimit'
+        self.create_tables('array_agg', formula_id, create_formula=False)
+        self.cur.execute(f"call pgf_array_agg(%s, 'customer', 'id', 'invoice_names', 'invoice', 'customer_id', 'name', jsonb_build_object('distinct', true, 'order_by', 'name asc nulls last'));", (formula_id,))
+
+        # set up test data
+        # Contents of customer table:
+        # | id  | name |
+        # | --- | --- |
+        # | 1   | customer A |
+        # | 2   | customer B |
+        self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
+        self.cur.execute("commit;")
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (1, 'invoice 1', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (2, 'invoice 2', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (4, 'invoice 4', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 3', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 3", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+    
+        # test: update invoice name
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set name='A invoice 3' where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 2
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=2 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=1 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: update invoice FK
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 2   | invoice 2  | 1
+        # | 3   | invoice 3  | 2
+        # | 4   | invoice 4  | 1
+        self.cur.execute("update invoice set customer_id=2 where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: delete invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 3   | invoice 3  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("delete from invoice where id=2")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+
+        # test: delete invoice
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 4   | invoice 4  | 1
+        self.cur.execute("delete from invoice where id=3")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+
+        # test: insert invoice with duplicate name. Expected : duplicated result must be found in array_agg
+        # Contents of invoice table after step:
+        # | id  | name       | customer_id
+        # | 1   | invoice 1  | 1
+        # | 4   | invoice 4  | 1
+        # | 3   | invoice 1  | 1
+        self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 1', 1)")
+        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
 
     def test_minmax_table(self):
         formula_id = 'customer_invoices_agg'
-        self.create_formula('minmax_table', formula_id)
+        self.create_tables('minmax_table', formula_id)
 
         # test 1 : insert invoices
         self.cur.execute("insert into invoice (id, name, customer_id, country, amount) values"
@@ -1209,7 +1604,7 @@ class TestModule(unittest.TestCase):
 
     def test_treelevel(self):
         formula_id = 'treelevel_node'
-        self.create_formula('treelevel', formula_id)
+        self.create_tables('treelevel', formula_id)
         
         # test : insert root node
         self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")
@@ -1369,7 +1764,7 @@ class TestModule(unittest.TestCase):
         
 
     def test_audit_table(self):
-        self.create_formula('audit_table', 'audit1')
+        self.create_tables('audit_table', 'audit1')
 
         # test: Insert row
         self.cur.execute("insert into customer(name, value) values('row1', 10);")
@@ -1397,7 +1792,7 @@ class TestModule(unittest.TestCase):
         self.conn.commit()
 
     def test_sync(self):
-        self.create_formula('sync', 'sync1')
+        self.create_tables('sync', 'sync1')
         
         # test: insert row with old column set, new column null
         self.cur.execute("insert into customer(id, customer_name) values('1', 'a');")
@@ -1461,7 +1856,7 @@ class TestModule(unittest.TestCase):
         
     def test_intersect_table(self):
         formula_id = 'intersect_table1'
-        self.create_formula('intersect_table', formula_id);
+        self.create_tables('intersect_table', formula_id);
 
         # add row1 in each table --> expect 1 row in intersect_table
         self.cur.execute("insert into a(column1, column2) values('row1', 10);")
@@ -1488,7 +1883,7 @@ class TestModule(unittest.TestCase):
     # test the case when a single table has duplicate rows.
     def test_intersect_table_duplicate_rows(self):
         formula_id = 'intersect_table2'
-        self.create_formula('intersect_table', formula_id);
+        self.create_tables('intersect_table', formula_id);
 
         self.cur.execute("insert into a(column1, column2, column3) values('row1', 10, '1');")
         self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
@@ -1512,7 +1907,7 @@ class TestModule(unittest.TestCase):
 
     def test_union_table(self):
         formula_id = 'union_table1'
-        self.create_formula('union_table', formula_id);
+        self.create_tables('union_table', formula_id);
 
         # add row1 in each table --> expect 1 row in union_table
         self.cur.execute("insert into a(column1, column2) values('row1', 10);")

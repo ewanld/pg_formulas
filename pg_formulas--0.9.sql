@@ -1049,7 +1049,7 @@ BEGIN
 
 	/* function to update the id of min of a single row identified by its PK given in parameter _pgf_id.*/
 	execute format($proc2$
-		CREATE OR REPLACE PROCEDURE _pgf_internal_id_of_min_single_update_%I(_pgf_id %I.%I%%TYPE) -- id, linked_table_name, linked_pk
+		CREATE OR REPLACE PROCEDURE _pgf_internal_refresh_single_%I(_pgf_id %I.%I%%TYPE) -- id, linked_table_name, linked_pk
 		LANGUAGE plpgsql AS $inner_proc2$
 		BEGIN
 			update %I set %I = ( -- base_table_name, base_aggregate_column
@@ -1111,7 +1111,7 @@ BEGIN
 			ELSIF TG_OP='DELETE' and old_row_matches_filter then
 				select %I into current_id_of_min from %I where %I = OLD.%I; -- base_aggregate_column, base_table_name, base_pk, linked_fk
 				if current_id_of_min = OLD.%I then -- linked_pk
-					call _pgf_internal_id_of_min_single_update_%I(OLD.%I); -- id, linked_fk
+					call _pgf_internal_refresh_single_%I(OLD.%I); -- id, linked_fk
 				end if;
 			ELSIF TG_OP='UPDATE' then
 				if OLD.%I <> NEW.%I then -- linked_fk, linked_fk
@@ -1120,14 +1120,14 @@ BEGIN
 					if current_id_of_min = OLD.%I then -- linked_pk
 						/* update id_of_min if current id_of_min = current id AND (FK has changed OR linked_value_column has decreased) */
 						/* full recompute on OLD FK */
-						call _pgf_internal_id_of_min_single_update_%I(OLD.%I); -- id, linked_fk
+						call _pgf_internal_refresh_single_%I(OLD.%I); -- id, linked_fk
 					end if;
 					/* full recompute on NEW FK */
-					call _pgf_internal_id_of_min_single_update_%I(NEW.%I); -- id, linked_fk
+					call _pgf_internal_refresh_single_%I(NEW.%I); -- id, linked_fk
 				elsif NEW.%I < OLD.%I then -- linked_value_column, linked_value_column
 					/* case : no FK change */
 					/* full recompute on OLD FK */
-					call _pgf_internal_id_of_min_single_update_%I(OLD.%I); -- id, linked_fk
+					call _pgf_internal_refresh_single_%I(OLD.%I); -- id, linked_fk
 				end if;
 			ELSIF TG_OP='TRUNCATE' then
 				update %I set %I=NULL; -- base_table_name, base_aggregate_column
@@ -1217,6 +1217,204 @@ BEGIN
 END;
 $proc$;
 
+--------------------------------------------------------------------------------
+-- ARRAY_AGG
+--------------------------------------------------------------------------------
+CREATE or replace PROCEDURE pgf_array_agg (
+	id TEXT,
+    base_table_name TEXT,
+    base_pk TEXT,
+    base_aggregate_column TEXT, -- column holding the 'ARRAY_AGG' value
+    linked_table_name TEXT,
+    linked_fk TEXT,
+	linked_value_column TEXT, -- column to be used for array aggregation
+	options JSONB default '{}'::JSONB
+)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+	row_filter TEXT;
+	order_by TEXT;
+	distinct_values boolean;
+	max_length int;
+	distinct_clause TEXT;
+	order_by_clause TEXT;
+	limit_clause TEXT;
+BEGIN
+	-- set default values for optional arguments
+	options := jsonb_build_object(
+		'filter', 'true',
+		'order_by', NULL,
+		'distinct', true,
+		'limit', NULL
+
+	) || options;
+	row_filter := options->>'filter';
+	order_by := options->>'order_by';
+	distinct_values := options->>'distinct';
+	max_length := options->>'limit';
+	if row_filter is null or row_filter = '' then
+		row_filter := 'true';
+	end if;
+
+	/* set SQL clauses */
+	distinct_clause := CASE distinct_values when true then 'DISTINCT' else '' end;
+	order_by_clause := CASE when order_by IS NULL OR order_by = '' then '' else 'ORDER BY ' || order_by end;
+	limit_clause := case when max_length IS NULL or max_length <= 0 then '' else '[1:' || max_length::text || ']' end;
+
+	call _pgf_internal_insert_metadata(id, 'array_agg', jsonb_build_object(
+		'base_table_name', base_table_name,
+		'base_pk', base_pk,
+		'base_aggregate_column', base_aggregate_column,
+		'linked_table_name', linked_table_name,
+		'linked_fk', linked_fk,
+		'linked_value_column', linked_value_column,
+		'options', options
+	));
+
+	/* function to update the array_agg value of a single row identified by its PK given in parameter _pgf_id.*/
+	execute format($proc2$
+		CREATE OR REPLACE PROCEDURE _pgf_internal_refresh_single_%I(_pgf_id %I.%I%%TYPE) -- id, linked_table_name, linked_fk
+		LANGUAGE plpgsql AS $inner_proc2$
+		BEGIN
+			update %I set %I = ( -- base_table_name, base_aggregate_column
+				select (array_agg(%I %s))%s from ( -- linked_value_column, order_by_clause, limit_clause
+					select %s %I -- distinct_clause, linked_value_column
+					from %I -- linked_table_name
+					where %I = _pgf_id -- linked_fk
+					and (%s) -- row_filter
+				) t
+			) where %I = _pgf_id; -- base_pk
+		END;
+		$inner_proc2$
+	$proc2$
+        , id, linked_table_name, linked_fk
+        , base_table_name, base_aggregate_column
+        , linked_value_column, order_by_clause, limit_clause
+        , distinct_clause, linked_value_column
+        , linked_table_name
+        , linked_fk
+        , row_filter
+        , base_pk
+	);
+
+	execute format($fun$
+		CREATE OR REPLACE FUNCTION _pgf_internal_array_agg_trgfun_%I() -- id
+		RETURNS TRIGGER AS $inner_trg$
+		DECLARE
+			old_row_matches_filter boolean := true;
+			new_row_matches_filter boolean := true;
+		BEGIN
+			/* test if OLD row matches filter */
+			select case when count(*)=1 then true else false end into old_row_matches_filter from (
+				select * from (
+					select (OLD.*)
+				) t
+				where %s -- row_filter
+			) t2;
+
+			/* test if NEW row matches filter */
+			select case when count(*)=1 then true else false end into new_row_matches_filter from (
+				select * from (
+					select NEW.*
+				) t
+				where %s -- row_filter
+			) t2;
+
+			IF TG_OP='INSERT' and new_row_matches_filter then
+				call _pgf_internal_refresh_single_%I(NEW.%I); -- id, linked_fk
+			ELSIF TG_OP='DELETE' and old_row_matches_filter then
+				call _pgf_internal_refresh_single_%I(OLD.%I); -- id, linked_fk
+			ELSIF TG_OP='UPDATE' then
+				if OLD.%I <> NEW.%I then -- linked_fk, linked_fk
+					/* case : FK changes */
+					if old_row_matches_filter then
+						call _pgf_internal_refresh_single_%I(OLD.%I); -- id, linked_fk
+					end if;
+					if new_row_matches_filter then
+						call _pgf_internal_refresh_single_%I(NEW.%I); -- id, linked_fk
+					end if;
+				else
+					/* case : no FK change */
+					/* full recompute on OLD FK */
+					if old_row_matches_filter then
+						call _pgf_internal_refresh_single_%I(OLD.%I); -- id, linked_fk
+					end if;
+				end if;
+			ELSIF TG_OP='TRUNCATE' then
+				update %I set %I=NULL; -- base_table_name, base_aggregate_column
+			END IF;
+			RETURN NEW;
+		END;
+		$inner_trg$ LANGUAGE plpgsql;
+	$fun$
+        , id
+        , row_filter
+        , row_filter
+        , id, linked_fk
+        , id, linked_fk
+        , linked_fk, linked_fk
+        , id, linked_fk
+        , id, linked_fk
+        , id, linked_fk
+        , base_table_name, base_aggregate_column
+	);
+
+	execute format($inner_proc$
+		CREATE or replace PROCEDURE "_pgf_internal_refresh_%I"() -- id
+		LANGUAGE plpgsql
+		AS $inner_proc2$
+			begin
+			    update %I set %I = NULL; -- base_table_name, base_aggregate_column
+				update %I set %I = sub.agg -- base_table_name, base_aggregate_column
+				from (
+					select %I as id, (array_agg(%I %s))%s as agg from ( -- linked_fk, linked_value_column, order_by_clause, limit_clause
+						select %s %I, %I -- distinct_clause, linked_fk, linked_value_column
+						from %I -- linked_table_name
+						where %s -- row_filter
+					) t
+					group by %I -- linked_fk
+				) as sub
+				where %I.%I = sub.id; -- base_table_name, base_pk
+			end;
+			$inner_proc2$;
+		$inner_proc$
+        , id
+        , base_table_name, base_aggregate_column
+        , base_table_name, base_aggregate_column
+        , linked_fk, linked_value_column, order_by_clause, limit_clause
+        , distinct_clause, linked_fk, linked_value_column
+        , linked_table_name
+        , row_filter
+        , linked_fk
+        , base_table_name, base_pk
+	);
+
+    execute format($trg$
+		CREATE TRIGGER _pgf_internal_array_agg_trg_%I -- id
+		after delete or insert or update ON %I -- linked_table_name
+		FOR EACH ROW
+		execute procedure _pgf_internal_array_agg_trgfun_%I(); -- id
+		$trg$,
+		id,
+		linked_table_name,
+		id
+	);
+
+    execute format($trg$
+		CREATE TRIGGER _pgf_internal_array_agg_trg_truncate_%I -- id
+		after truncate ON %I -- linked_table_name
+		FOR EACH STATEMENT
+		execute procedure _pgf_internal_array_agg_trgfun_%I(); -- id
+		$trg$,
+		id,
+		linked_table_name,
+		id
+	);
+
+	call pgf_refresh(id);
+
+END;
+$proc$;
 --------------------------------------------------------------------------------
 -- MINMAX_TABLE
 --------------------------------------------------------------------------------
