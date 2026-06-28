@@ -4,9 +4,9 @@ Functions to implement:
 **Aggregate data into a single database field**
   * 🟢DONE : SUM
   * 🟢DONE : COUNT
-  * 🟠TODO : MIN
-  * 🟠TODO : MAX
-  * 🟠TODO : ID_OF_MIN
+  * 🟢DONE : MIN
+  * 🟢DONE : MAX
+  * 🟢DONE : ID_OF_MIN
   * 🟠TODO : ID_OF_MAX
   * 🟠TODO : ARRAY_AGG
   * 🟠TODO : STRING_AGG
