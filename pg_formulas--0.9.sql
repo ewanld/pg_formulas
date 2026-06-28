@@ -2140,15 +2140,17 @@ BEGIN
     ));
 
     -- Create audit table if not exists
-    execute format(
-        'CREATE TABLE IF NOT EXISTS %I (
+    execute format($sql$
+        CREATE TABLE IF NOT EXISTS %I ( -- audit_table_name
             id SERIAL PRIMARY KEY,
             table_name TEXT,
-            %s TEXT,
-            %s JSONB,
-            %s JSONB,
+            %s TEXT, -- operation_column_name
+            %s JSONB, -- old_value_column_name
+            %s JSONB, -- new_value_column_name
             event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );',
+        );
+		$sql$
+		,
         audit_table_name,
         operation_column_name,
         old_value_column_name,
