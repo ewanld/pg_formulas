@@ -708,49 +708,17 @@ Additional options :
 ### Example
 Given the following two tables ```bike``` and ```car```, we would like to synchronize data to a ```vehicle``` table cointaining data from both tables:
 
-<table>
-    <thead>
-        <tr>
-            <th colspan="2">Bike</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td><b>PK</b></td>
-            <td><b>id</b></td>
-        </tr>
-        <tr>
-            <td/>
-            <td>common_atribute1</td>
-        </tr>
-        <tr>
-            <td/>
-            <td>bike_atribute1</td>
-        </tr>
-    </tbody>
-</table>
+|  |  |
+| --- | --- |
+| PK | id |
+|  | common_atribute1 |
+|  | bike_atribute1 |
 
-<table>
-    <thead>
-        <tr>
-            <th colspan="2">Car</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td><b>PK</b></td>
-            <td><b>id</b></td>
-        </tr>
-        <tr>
-            <td/>
-            <td>common_atribute1</td>
-        </tr>
-        <tr>
-            <td/>
-            <td>car_atribute1</td>
-        </tr>
-    </tbody>
-</table>
+|  |  |
+| --- | --- |
+| PK | id |
+|  | common_atribute1 |
+|  | car_atribute1 |
 
 From a Postgresql shell execute :
 ```sql
@@ -760,31 +728,12 @@ call pgf_inheritance_table('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To
 This will :
 * Create the ```vehicle``` table containing columns from both ```bike``` and ```car``` tables, plus a discriminator column (named ```discriminator``` by default).
 
-<table>
-    <thead>
-        <tr>
-            <th colspan="2">Vehicle</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td><b>PK</b></td>
-            <td><b>id</b></td>
-        </tr>
-        <tr>
-            <td/>
-            <td>common_atribute1</td>
-        </tr>
-        <tr>
-            <td/>
-            <td>bike_atribute1</td>
-        </tr>
-        <tr>
-            <td/>
-            <td>car_atribute1</td>
-        </tr>
-    </tbody>
-</table>
+|  |  |
+| --- | --- |
+| PK | id |
+|  | common_atribute1 |
+|  | bike_atribute1 |
+|  | car_atribute1 |
 
 * Create the triggers to synchronize changes from the ```vehicle``` table to the ```bike``` and ```car``` tables;
 
