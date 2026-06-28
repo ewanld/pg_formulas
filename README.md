@@ -730,9 +730,10 @@ call pgf_inheritance_table('uvehicle', 'vehicle', ARRAY['bike', 'car'], 'BASE_To
 This will :
 * Create the ```vehicle``` table containing columns from both ```bike``` and ```car``` tables, plus a discriminator column (named ```discriminator``` by default).
 
-Vehicle table:
+```vehicle``` table:
+
 | discriminator | id          | model         | weight | num_doors  | fuel_type  | payload_kg | num_axles  |
-| ------------- | ----------- | ------------- | ------ | ---------- | ---------- | ---------- |
+| ------------- | ----------- | ------------- | ------ | ---------- | ---------- | ---------- | ---------- |
 | car           | tesla_m3    | Tesla Model 3 | 1800   | 4          | electric   | ```NULL``` | ```NULL``` |
 | car           | mini_cooper | Mini Cooper S | 1300   | 2          | petrol"    | ```NULL``` | ```NULL``` |
 | truck         | volvo_fh    | Volvo FH16    | 8000   | ```NULL``` | ```NULL``` | 25000      | 3          |
