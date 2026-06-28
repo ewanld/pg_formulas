@@ -231,7 +231,7 @@ PROCEDURE pgf_min (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the target (min) field. |
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_aggregate_column``` | Name of the column from the base table that will store the min value. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
+| ⚡ ```base_aggregate_column``` | Name of the column from the base table that will store the min value. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
 | ```linked_table_name``` | Name of the linked table containing rows to be considered. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```linked_value_column``` | Name of the column in the linked table whose minimum value will be tracked. |
@@ -246,7 +246,7 @@ Additional options :
 From the below tables, we want to maintain `product.min_price` as the minimum `listing.price` for each product.
 
 `product` table:
-| id | name | min_price |
+| id | name | ⚡ min_price |
 |----|------|-----------|
 | 1  | Widget A | NULL |
 | 2  | Widget B | NULL |
@@ -273,7 +273,7 @@ call pgf_min(
 
 After each change to the `listing` table, `product.min_price` is updated automatically:
 
-| id | name | min_price |
+| id | name | ⚡ min_price |
 |----|------|-----------|
 | 1  | Widget A | 50 |
 | 2  | Widget B | 200 |
@@ -301,7 +301,7 @@ PROCEDURE pgf_id_of_min (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the "id of min" target field. |
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_aggregate_column``` | Name of the column from the base table that will store the id of the linked row with the minimum value. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
+| ⚡ ```base_aggregate_column``` | Name of the column from the base table that will store the id of the linked row with the minimum value. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
 | ```linked_table_name``` | Name of the linked table containing rows to be considered. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```linked_value_column``` | Name of the column in the linked table whose minimum value is used to determine the id to track.  |
@@ -316,7 +316,7 @@ Additional options :
 From the below tables, we want to maintain `product.min_price_listing_id` as the id of the listing with the minimum `price` for each product.
 
 `product` table:
-| id | name | min_price_listing_id |
+| id | name | ⚡ min_price_listing_id |
 |----|------|----------------------|
 | 1  | Widget A | NULL |
 | 2  | Widget B | NULL |
@@ -343,7 +343,7 @@ call pgf_id_of_min(
 
 After each change to the `listing` table, `product.min_price_listing_id` is updated automatically:
 
-| id | name | min_price_listing_id |
+| id | name | ⚡ min_price_listing_id |
 |----|------|----------------------|
 | 1  | Widget A | 2 |
 | 2  | Widget B | 3 |
@@ -370,7 +370,7 @@ PROCEDURE pgf_id_of_max (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the "id of max" target field. |
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_aggregate_column``` | Name of the column from the base table that will store the id of the linked row with the maximum value. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
+| ⚡ ```base_aggregate_column``` | Name of the column from the base table that will store the id of the linked row with the maximum value. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
 | ```linked_table_name``` | Name of the linked table containing rows to be considered. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```linked_value_column``` | Name of the column in the linked table whose maximum value is used to determine the id to track.  |
@@ -385,7 +385,7 @@ Additional options :
 From the below tables, we want to maintain `product.max_price_listing_id` as the id of the listing with the maximum `price` for each product.
 
 `product` table:
-| id | name | max_price_listing_id |
+| id | name | ⚡ max_price_listing_id |
 |----|------|----------------------|
 | 1  | Widget A | NULL |
 | 2  | Widget B | NULL |
@@ -412,7 +412,7 @@ call pgf_id_of_max(
 
 After each change to the `listing` table, `product.max_price_listing_id` is updated automatically:
 
-| id | name | max_price_listing_id |
+| id | name | ⚡ max_price_listing_id |
 |----|------|----------------------|
 | 1  | Widget A | 1 |
 | 2  | Widget B | 3 |
@@ -440,7 +440,7 @@ PROCEDURE pgf_array_agg (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the target ARRAY field. |
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_aggregate_column``` | Name of the column from the base table that will store the ARRAY. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
+| ⚡ ```base_aggregate_column``` | Name of the column from the base table that will store the ARRAY. **The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field.** |
 | ```linked_table_name``` | Name of the linked table containing rows to be aggregated. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```linked_value_column``` | Name of the column in the linked table whose values will be aggregated into an ARRAY. |
@@ -458,7 +458,7 @@ Additional options :
 From the below tables, we want to maintain `product.prices` as the array of `listing.price` values for each product.
 
 `product` table:
-| id | name | prices |
+| id | name | ⚡ prices |
 |----|------|---------------|
 | 1  | Widget A | NULL |
 | 2  | Widget B | NULL |
@@ -488,7 +488,7 @@ call pgf_array_agg(
 
 After each change to the `listing` table, `product.prices` is updated automatically:
 
-| id | name | prices |
+| id | name | ⚡ prices |
 |----|------|---------------|
 | 1  | Widget A | [50, 100] |
 | 2  | Widget B | [200] |
@@ -516,7 +516,7 @@ PROCEDURE pgf_max (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the target (max) field. |
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_aggregate_column``` | Name of the column from the base table that will store the max value. |
+| ⚡ ```base_aggregate_column``` | Name of the column from the base table that will store the max value. |
 | ```linked_table_name``` | Name of the linked table containing rows to be considered. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```linked_value_column``` | Name of the column in the linked table whose maximum value will be tracked. The column must be created with a default value of ```NULL```. All insertions must be done with this ```NULL``` value and no updates should be done manually to this field. |
@@ -531,7 +531,7 @@ Additional options :
 From the below tables, we want to maintain `product.max_price` as the maximum `listing.price` for each product.
 
 `product` table:
-| id | name | max_price |
+| id | name | ⚡ max_price |
 |----|------|-----------|
 | 1  | Widget A | NULL |
 | 2  | Widget B | NULL |
@@ -558,7 +558,7 @@ call pgf_max(
 
 After each change to the `listing` table, `product.max_price` is updated automatically:
 
-| id | name | max_price |
+| id | name | ⚡ max_price |
 |----|------|-----------|
 | 1  | Widget A | 50 |
 | 2  | Widget B | 200 |
@@ -587,7 +587,7 @@ PROCEDURE pgf_count (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the count field. |
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_count_column``` | Name of the column from the base table that will store the count. |
+| ⚡ ```base_count_column``` | Name of the column from the base table that will store the count. |
 | ```linked_table_name``` | Name of the linked table containing rows to be counted. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```options``` | Additional optional arguments, passed as a JSONB object (see available options below). |
@@ -601,7 +601,7 @@ Additional options :
 From the below tables, we want to keep `customer.order_count` updated with the number of orders for each customer.
 
 `customer` table:
-| id | name | order_count |
+| id | name | ⚡ order_count |
 |----|------|-------------|
 | 1  | John Doe | 0 |
 | 2  | Jane Roe | 0 |
@@ -627,7 +627,7 @@ call pgf_count(
 
 After each change to the `order` table, `customer.order_count` is updated automatically:
 
-| id | name | order_count |
+| id | name | ⚡ order_count |
 |----|------|-------------|
 | 1  | John Doe | 2 |
 | 2  | Jane Roe | 1 |
@@ -658,7 +658,7 @@ PROCEDURE pgf_minmax_table (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas).
 | ```table_name``` | Name of the source table containing the data to be aggregated.
 | ```pk``` | Name of the primary key column name from the source table.
-| ```aggregate_column``` | name of the column from the source table containing the data to be aggregated.
+| ⚡ ```aggregate_column``` | name of the column from the source table containing the data to be aggregated.
 | ```options``` | Additional optional arguments, passed as a JSONB object (see available options below).
 
 Additional options :
