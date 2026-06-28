@@ -125,10 +125,10 @@ PROCEDURE pgf_revdate(
 ### Example
 From the below table ```customer```, we want to update the ```last_modified``` column automatically when a row is modified.
 
-| id | name | last_modified |
+| id | name | ⚡ last_modified |
 |----------|----------|----------|
-| 1  | John Doe  | ⚡2025-01-01T10:00:00Z  |
-| 2  | Benedict Cumberbatch  | ⚡2025-05-15T10:00:05Z  |
+| 1  | John Doe  | 2025-01-01T10:00:00Z  |
+| 2  | Benedict Cumberbatch  | 2025-05-15T10:00:05Z  |
 
 Then from a Postgresql shell execute :
 ```sql
@@ -161,7 +161,7 @@ PROCEDURE pgf_sum (
 | ```id``` | Id to identify this particular formula instance (must be unique across all declared formulas). |
 | ```base_table_name``` | Name of the base table holding the "sum" field.
 | ```base_pk``` | Name of the primary key column in the base table. |
-| ```base_aggregate_column``` | Name of the column from the base table that will store the sum. **The column must have a default value of 0, and all insertions must be done with this default value of 0.** |
+| ⚡ ```base_aggregate_column``` | Name of the column from the base table that will store the sum. **The column must have a default value of 0, and all insertions must be done with this default value of 0.** |
 | ```linked_table_name``` | Name of the linked table containing rows to be summed. |
 | ```linked_fk``` | Name of the foreign key column in the linked table referencing the base table primary key. |
 | ```linked_value_column``` | Name of the numeric column in the linked table whose values are summed. |
@@ -176,7 +176,7 @@ Additional options :
 From the below tables, we want to maintain `customer.total_spent` as the sum of `order.amount` for each customer.
 
 `customer` table:
-| id | name | total_spent |
+| id | name | ⚡ total_spent |
 |----|------|-------------|
 | 1  | John Doe | 0 |
 | 2  | Jane Roe | 0 |
@@ -203,7 +203,7 @@ call pgf_sum(
 
 After each order (insert/update/delete), the `customer.total_spent` column is updated automatically :
 
-| id | name | total_spent |
+| id | name | ⚡ total_spent |
 |----|------|-------------|
 | 1  | John Doe | 150 |
 | 2  | Jane Roe | 200 |
