@@ -38,8 +38,17 @@ Functions to implement:
   * 🟠TODO : TREEPATH
   * 🟠TODO : TREECLOSURE_TABLE
 
-# TODO
+# Formula implementation checklist
+* pg_formulas.sql: implement procedure pgf_XXXX
+* pg_formulas.sql: add branch in pgf_set_enabled
+* pg_formulas.sql: add branch in pgf_drop
+* test.py: add branch in create_tables
+* test.py: add kind in test_enable_disable_drop
+* test.py: add test cases
+* README.md: add doc
+* TODO.md : update project status
 
+# TODO
 * pgf_inheritance_table: make pk column name configurable
 * ALL: drop trigger if exists before creating them
 * SYNC: add a filter clause
