@@ -78,6 +78,36 @@ BEGIN
 END;
 $$;
 
+/* if dedup is false, then function is a no-op. */
+CREATE OR REPLACE FUNCTION _pgf_internal_array_dedup(arr anyarray, dedup boolean)
+RETURNS anyarray AS $$
+DECLARE
+    result arr%TYPE;
+BEGIN
+    -- Short-circuit for NULL or empty input
+    IF arr IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    IF array_length(arr, 1) IS NULL THEN
+        RETURN arr;
+    END IF;
+
+	if not dedup then
+		return arr;
+	end if;
+
+    SELECT array_agg(val ORDER BY first_pos) INTO result
+    FROM (
+        SELECT val, MIN(ord) AS first_pos
+        FROM unnest(arr) WITH ORDINALITY AS t(val, ord)
+        GROUP BY val
+    ) sub;
+
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE;
+
 --------------------------------------------------------------------------------
 -- COMMON FUNCTIONS
 --------------------------------------------------------------------------------
@@ -115,7 +145,7 @@ begin
 	kind := args->>'kind';
 	
 	-- drop refresh procedure
-	execute format('drop procedure if exists _pgf_internal_refresh_%I', kind, id);
+	execute format('drop procedure if exists _pgf_internal_refresh_%I', id);
 
 	-- drop other objects
 	if kind = 'revdate' then
@@ -182,6 +212,30 @@ begin
 			EXECUTE format('DROP TRIGGER IF EXISTS _pgf_internal_combined_table_trg_%I_%I ON %I;', id, sub_tables[i], sub_tables[i]);
 			EXECUTE format('DROP FUNCTION IF EXISTS _pgf_internal_combined_table_trgfun_%I_%I;', id, sub_tables[i]);
 		end loop;
+
+	ELSIF kind = 'sync' then
+		table_name := args->>'table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
+
+	ELSIF kind in ('min', 'max') then
+		table_name := args->>'linked_table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I CASCADE;', kind, id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I() CASCADE;', kind, id);
+
+	elsif kind in ('id_of_min', 'if_of_max') then
+		table_name := args->>'linked_table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I CASCADE;', kind, id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I() CASCADE;', kind, id);
+		execute format('drop procedure if exists _pgf_internal_refresh_single_%I', id);
+
+	elsif kind = 'array_agg' then
+		table_name := args->>'linked_table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I CASCADE;', kind, id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I() CASCADE;', kind, id);
+		execute format('drop procedure if exists _pgf_internal_refresh_single_%I', id);
+
+
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
@@ -227,8 +281,8 @@ begin
 		if enabled then
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
-		execute format('alter table %I %s trigger _pgf_internal_sum_trg_%I', table_name, enable_fragment, id);
-		execute format('alter table %I %s trigger _pgf_internal_sum_trg_truncate_%I', table_name, enable_fragment, id);
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_%I', table_name, enable_fragment, kind, id);
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_truncate_%I', table_name, enable_fragment, kind, id);
 
 
 	elsif kind = 'minmax_table' then
@@ -277,13 +331,38 @@ begin
 
 	elsif kind = 'sync' then
 		table_name := args->>'table_name';
-		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_sync_trg_%I;', table_name, enable_fragment, id);
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_%s_trg_%I;', table_name, enable_fragment, kind, id);
 	
-	elsif kind = 'intersect_table' or kind = 'union_table' then
+	elsif kind in ('intersect_table', 'union_table') then
 		sub_tables := _pgf_internal_jsonb_to_text_array(args->'table_names');
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
 			EXECUTE format('ALTER TABLE %I %s TRIGGER _pgf_internal_combined_table_trg_%I_%I;', sub_tables[i], enable_fragment, id, sub_tables[i]);
 		end loop;
+
+	elsif kind in ('min', 'max') then
+		table_name := args->>'linked_table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_%I', table_name, enable_fragment, kind, id);
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_truncate_%I', table_name, enable_fragment, kind, id);
+
+	elsif kind in ('id_of_min', 'id_of_max') then
+		table_name := args->>'linked_table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_%I', table_name, enable_fragment, kind, id);
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_truncate_%I', table_name, enable_fragment, kind, id);
+
+	elsif kind = 'array_agg' then
+		table_name := args->>'linked_table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_%I', table_name, enable_fragment, kind, id);
+		execute format('alter table %I %s trigger _pgf_internal_%s_trg_truncate_%I', table_name, enable_fragment, kind, id);
+
 	else
 		raise exception 'Unknown value for argument "kind": %', kind;
 	end if;
@@ -1236,7 +1315,6 @@ DECLARE
 	order_by TEXT;
 	distinct_values boolean;
 	max_length int;
-	distinct_clause TEXT;
 	order_by_clause TEXT;
 	limit_clause TEXT;
 BEGIN
@@ -1257,7 +1335,6 @@ BEGIN
 	end if;
 
 	/* set SQL clauses */
-	distinct_clause := CASE distinct_values when true then 'DISTINCT' else '' end;
 	order_by_clause := CASE when order_by IS NULL OR order_by = '' then '' else 'ORDER BY ' || order_by end;
 	limit_clause := case when max_length IS NULL or max_length <= 0 then '' else '[1:' || max_length::text || ']' end;
 
@@ -1277,8 +1354,8 @@ BEGIN
 		LANGUAGE plpgsql AS $inner_proc2$
 		BEGIN
 			update %I set %I = ( -- base_table_name, base_aggregate_column
-				select (array_agg(%I %s))%s from ( -- linked_value_column, order_by_clause, limit_clause
-					select %s %I -- distinct_clause, linked_value_column
+				select _pgf_internal_array_dedup((array_agg(%I %s))%s, %s) from ( -- linked_value_column, order_by_clause, limit_clause, distinct_values::text
+					select * /* need to select all columns in case they are referenced in the order by clause */
 					from %I -- linked_table_name
 					where %I = _pgf_id -- linked_fk
 					and (%s) -- row_filter
@@ -1289,8 +1366,7 @@ BEGIN
 	$proc2$
         , id, linked_table_name, linked_fk
         , base_table_name, base_aggregate_column
-        , linked_value_column, order_by_clause, limit_clause
-        , distinct_clause, linked_value_column
+        , linked_value_column, order_by_clause, limit_clause, distinct_values::text
         , linked_table_name
         , linked_fk
         , row_filter
@@ -1367,11 +1443,9 @@ BEGIN
 			    update %I set %I = NULL; -- base_table_name, base_aggregate_column
 				update %I set %I = sub.agg -- base_table_name, base_aggregate_column
 				from (
-					select %I as id, (array_agg(%I %s))%s as agg from ( -- linked_fk, linked_value_column, order_by_clause, limit_clause
-						select %s %I, %I -- distinct_clause, linked_fk, linked_value_column
-						from %I -- linked_table_name
-						where %s -- row_filter
-					) t
+					select %I as id, _pgf_internal_array_dedup((array_agg(%I %s))%s, %s) as agg -- -- linked_fk, linked_value_column, order_by_clause, limit_clause, distinct_values::text
+					from %I -- linked_table_name
+					where %s -- row_filter
 					group by %I -- linked_fk
 				) as sub
 				where %I.%I = sub.id; -- base_table_name, base_pk
@@ -1381,8 +1455,7 @@ BEGIN
         , id
         , base_table_name, base_aggregate_column
         , base_table_name, base_aggregate_column
-        , linked_fk, linked_value_column, order_by_clause, limit_clause
-        , distinct_clause, linked_fk, linked_value_column
+        , linked_fk, linked_value_column, order_by_clause, limit_clause, distinct_values::text
         , linked_table_name
         , row_filter
         , linked_fk
