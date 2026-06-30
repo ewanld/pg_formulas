@@ -120,30 +120,30 @@ begin
 	-- drop other objects
 	if kind = 'revdate' then
 		table_name := args->>'table_name';
-		execute format('DROP TRIGGER IF EXISTS _pgf_internal_revdate_trg_%I ON %I;', id, table_name);
-		execute format('DROP function if exists _pgf_internal_revdate_trgfun_%I();', id);
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
+		execute format('DROP function if exists _pgf_internal_%s_trgfun_%I();', kind, id);
 
 	ELSIF kind = 'count' then
 		table_name := args->>'linked_table_name';
-		execute format('drop trigger if exists _pgf_internal_count_trg_%I on %I', id, table_name);
-		execute format('drop trigger if exists _pgf_internal_count_trg_truncate_%I on %I', id, table_name);
-		execute format('drop function if exists _pgf_internal_count_trgfun_%I()', id);
+		execute format('drop trigger if exists _pgf_internal_%s_trg_%I on %I', kind, id, table_name);
+		execute format('drop trigger if exists _pgf_internal_%s_trg_truncate_%I on %I', kind, id, table_name);
+		execute format('drop function if exists _pgf_internal_%s_trgfun_%I()', kind, id);
 
 	ELSIF kind = 'sum' then
 		table_name := args->>'linked_table_name';
-		execute format('drop trigger if exists _pgf_internal_sum_trg_%I on %I', id, table_name);
-		execute format('drop trigger if exists _pgf_internal_sum_trg_truncate_%I on %I', id, table_name);
-		execute format('drop function if exists _pgf_internal_sum_trgfun_%I()', id);
+		execute format('drop trigger if exists _pgf_internal_%s_trg_%I on %I', kind, id, table_name);
+		execute format('drop trigger if exists _pgf_internal_%s_trg_truncate_%I on %I', kind, id, table_name);
+		execute format('drop function if exists _pgf_internal_%s_trgfun_%I()', kind, id);
 
 	ELSIF kind = 'minmax_table' then
 		table_name := args->>'table_name';
-		execute format('drop trigger if exists _pgf_internal_minmax_table_trg_%I on %I;', id, table_name);
-		execute format('drop function if exists _pgf_internal_minmax_table_trgfun_%I()', id);
+		execute format('drop trigger if exists _pgf_internal_%s_trg_%I on %I;', kind, id, table_name);
+		execute format('drop function if exists _pgf_internal_%s_trgfun_%I()', kind, id);
 
 	ELSIF kind = 'treelevel' then
 		table_name := args->>'table_name';
-		execute format('DROP TRIGGER IF EXISTS _pgf_internal_treelevel_trg_%s ON %I;', id, table_name);
-    	execute format('DROP FUNCTION IF EXISTS _pgf_internal_treelevel_trgfun_%s();', id);
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
+    	execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
 
 	ELSIF kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
@@ -152,14 +152,14 @@ begin
 
 		IF sync_direction = 'SUB_TO_BASE' THEN
 			FOR i IN 1..array_length(sub_tables, 1) LOOP
-				execute format('drop trigger if exists _pgf_internal_inheritance_table_trg_%s_%s on %I; ', id, sub_tables[i], sub_tables[i]);
-				execute format('drop function if exists _pgf_internal_inheritance_table_trgfun_%s_%s; ', id, sub_tables[i]);
+				execute format('drop trigger if exists _pgf_internal_%s_trg_%s_%s on %I; ', kind, id, sub_tables[i], sub_tables[i]);
+				execute format('drop function if exists _pgf_internal_%s_trgfun_%s_%s; ', kind, id, sub_tables[i]);
 			END LOOP;
 		ELSE
 			FOR i IN 1..array_length(sub_tables, 1) LOOP
-				execute format('drop trigger if exists _pgf_internal_inheritance_table_trg_%s_%s on %I; ', id, sub_tables[i], base_table_name);
+				execute format('drop trigger if exists _pgf_internal_%s_trg_%s_%s on %I; ', kind, id, sub_tables[i], base_table_name);
 			END LOOP;
-			execute format('drop function if exists _pgf_internal_inheritance_table_trgfun_%s_%s; ', id, base_table_name);
+			execute format('drop function if exists _pgf_internal_%s_trgfun_%s_%s; ', kind, id, base_table_name);
 		END IF;
 
 	ELSIF kind = 'audit_table' then
@@ -167,14 +167,14 @@ begin
 
 		-- Drop triggers and trigger functions for each audited table
 		FOR i IN 1..array_length(sub_tables, 1) LOOP
-			execute format('DROP TRIGGER IF EXISTS _pgf_internal_audit_table_trg_%s_%s ON %I;', id, sub_tables[i], sub_tables[i]);
-			execute format('DROP FUNCTION IF EXISTS _pgf_internal_audit_table_trgfun_%s_%s();', id, sub_tables[i]);
+			execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%s_%s ON %I;', kind, id, sub_tables[i], sub_tables[i]);
+			execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%s_%s();', kind, id, sub_tables[i]);
 		END LOOP;
 
 	ELSIF kind = 'sync' then
 		table_name := args->>'table_name';
-		execute format('DROP TRIGGER IF EXISTS _pgf_internal_sync_trg_%I ON %I;', id, table_name);
-		execute format('DROP FUNCTION IF EXISTS _pgf_internal_sync_trgfun_%I();', id);
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
+		execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
 
 	elsif kind = 'intersect_table' or kind = 'union_table' then
 		sub_tables := _pgf_internal_jsonb_to_text_array(args->'table_names');
