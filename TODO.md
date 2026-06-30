@@ -8,7 +8,7 @@ Functions to implement:
   * 🟢DONE : MAX
   * 🟢DONE : ID_OF_MIN
   * 🟠TODO : ID_OF_MAX
-  * 🟠DONE : ARRAY_AGG
+  * 🟢DONE : ARRAY_AGG
   * 🟠TODO : STRING_AGG
 
 **Aggregate data into a dedicated table**:
