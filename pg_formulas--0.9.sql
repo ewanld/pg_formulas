@@ -1808,6 +1808,11 @@ BEGIN
             new_level INT;
             old_level INT;
         BEGIN
+			/* short-circuit is parent column has not changed */
+			if TG_OP = 'UPDATE' and old.%I IS NOT DISTINCT FROM NEW.%I then -- parent_column, parent_column
+				return new;
+			end if;
+
             /* Compute new level for the current node */
             IF NEW.%I IS NULL THEN -- parent_column
                 new_level := 0;
@@ -1845,8 +1850,9 @@ BEGIN
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-    $f$,
-	  trg_func_name
+    $f$
+	, trg_func_name
+	, parent_column, parent_column
 	, parent_column
 	, level_column
 	, table_name
@@ -2572,3 +2578,4 @@ BEGIN
 
 END;
 $proc$;
+
