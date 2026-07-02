@@ -36,7 +36,7 @@ Functions to implement:
 **Working with trees:**
   * 🟢DONE : TREELEVEL
   * 🟠TODO : TREEPATH
-  * 🟠TODO : TREECLOSURE_TABLE
+  * 🟠IN PROGRESS : TREECLOSURE_TABLE
 
 # Formula implementation checklist
 * pg_formulas.sql: implement procedure pgf_XXXX
@@ -62,3 +62,4 @@ Functions to implement:
 * COUNT_TABLE: add a 'multidimensional_aggregation' argument with values: ROLLUP or CUBE
 * COUNT : implement filter (use SUM as example)
 * PGF_MIN, PGF_MAX : add tests with row_filter clause
+* publish extension and update README to show CREATE EXTENSION usage.

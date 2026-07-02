@@ -18,7 +18,7 @@ pg_formulas is a Postgresql extension that brings Excel-like formulas to make yo
 # Overiew
 pg_formulas provides a collection of PostgreSQL procedures that allow data to automatically respond to changes—similar to how Excel formulas update cells based on other cells’ values.
 
-The extension currently includes around **20 types of formulas**, covering common data synchronization needs.
+The extension includes **25 types of formulas**, covering common data synchronization needs.
 
 Each formula works by creating **one or more triggers** that listen for changes and perform **incremental updates** through the appropriate ```INSERT```, ```UPDATE```, or ```DELETE``` operations. These triggers run synchronously, ensuring that updates are both **instant** and **atomic** (propagated changes occur within the same transaction as the original modification).
 
