@@ -175,6 +175,11 @@ begin
 		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
     	execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
 
+	ELSIF kind = 'treeclosure_table' then
+		table_name := args->>'table_name';
+		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
+    	execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
+
 	ELSIF kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
 		sub_tables := _pgf_internal_jsonb_to_text_array(args->'sub_tables');
@@ -298,6 +303,14 @@ begin
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
 		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_treelevel_trg_%s;', table_name, enable_fragment, id);
+
+	elsif kind = 'treeclosure_table' then
+		table_name := args->>'table_name';
+		if enabled then
+			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
+		end if;
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_treeclosure_table_trg_%s;', table_name, enable_fragment, id);
+
 
 	elsif kind = 'inheritance_table' then
 		base_table_name := args->>'base_table_name';
@@ -1496,7 +1509,7 @@ CREATE or replace PROCEDURE pgf_minmax_table (
     table_name TEXT,
 	pk TEXT,
     aggregate_column TEXT,
-	options JSONB
+	options JSONB DEFAULT '{}'::JSONB
 )
 LANGUAGE plpgsql AS $proc$
 DECLARE
@@ -1935,6 +1948,223 @@ BEGIN
 END;
 $proc$;
 
+
+
+--------------------------------------------------------------------------------
+-- TREECLOSURE_TABLE
+--------------------------------------------------------------------------------
+-- Arguments:
+--   id TEXT: Unique identifier for this trigger set
+--   table_name TEXT: Name of the table
+--   pk_column TEXT: Name of the primary key column
+--   parent_column TEXT: Name of the column referencing the parent node (nullable for root)
+CREATE OR REPLACE PROCEDURE pgf_treeclosure_table(
+    id TEXT,
+    table_name TEXT,
+    pk_column TEXT,
+    parent_column TEXT,
+	options JSONB DEFAULT '{}'::JSONB
+) LANGUAGE plpgsql AS $proc$
+DECLARE
+    trg_func_name TEXT := format('_pgf_internal_treeclosure_table_trgfun_%s', id);
+    trg_name TEXT := format('_pgf_internal_treeclosure_table_trg_%s', id);
+	closure_table_name TEXT;
+	ancestor_id_column_name TEXT;
+	descendant_id_column_name TEXT;
+	depth_column_name TEXT;
+BEGIN
+	-- set default values for optional arguments
+	options := jsonb_build_object(
+		'closure_table_name', table_name || '_closure',
+		'ancestor_id_column_name', 'ancestor_id',
+		'descendant_id_column_name', 'descendant_id',
+		'depth_column_name', 'depth'
+	) || options;
+
+	call _pgf_internal_insert_metadata(id, 'treeclosure_table', jsonb_build_object(
+		'table_name', table_name,
+		'pk_column', pk_column,
+		'parent_column', parent_column,
+		'options', options
+	));
+
+	closure_table_name := options->>'closure_table_name';
+	ancestor_id_column_name := options->>'ancestor_id_column_name';
+	descendant_id_column_name := options->>'descendant_id_column_name';
+	depth_column_name := options->>'depth_column_name';
+
+    -- Create closure table if not exists
+    execute format($sql$
+        CREATE TABLE IF NOT EXISTS %I as -- closure_table_name
+            select %I as ancestor_id, -- pk_column
+			       %I as descendant_id, -- pk_column
+				   0::int as depth
+            from %I -- table_name
+			limit 0;
+		$sql$
+        , closure_table_name
+        , pk_column
+        , pk_column
+        , table_name
+    );
+
+	execute format('alter table %I add primary key(%I, %I);', closure_table_name, ancestor_id_column_name, descendant_id_column_name);
+
+    /* Create the trigger function */
+    execute format($f$
+        CREATE OR REPLACE FUNCTION %I() -- trg_func_name
+        RETURNS TRIGGER AS $$
+        BEGIN
+			IF TG_OP = 'INSERT' then
+				WITH RECURSIVE paths AS (
+					/* Base case: every node is its own ancestor at depth 0 */
+					SELECT %I AS ancestor_id, %I AS descendant_id, 0 AS depth -- pk_column, pk_column
+					FROM %I -- table_name
+					where %I = NEW.%I -- pk_column, pk_column
+					UNION ALL
+					/* Recursive case: extend existing paths one level further down */
+					SELECT e.%I as ancestor_id, NEW.%I AS descendant_id, p.depth + 1 as depth -- parent_column, pk_column
+					FROM paths p
+					JOIN %I e ON e.%I = p.ancestor_id -- table_name, pk_column
+					where e.%I is not null -- parent_column
+				)
+				INSERT INTO %I (%I, %I, %I) -- closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
+				SELECT ancestor_id, descendant_id, depth FROM paths;
+
+			ELSIF TG_OP = 'UPDATE' then
+			    /* Only act if parent_id actually changed */
+				IF NEW.%I IS NOT DISTINCT FROM OLD.%I THEN -- parent_column, parent_column
+					RETURN NEW;
+				END IF;
+
+				/* Cycle detection */
+				IF NEW.%I IS NOT NULL AND EXISTS ( -- parent_column
+					SELECT 1 FROM %I -- closure_table_name
+					WHERE %I = NEW.%I -- ancestor_id_column_name, pk_column
+					AND %I = NEW.%I -- descendant_id_column_name, parent_column
+					AND %I > 0 -- depth_column_name
+				) THEN
+					RAISE EXCEPTION 'Cycle detected: cannot move node %% under its descendant %%',
+						NEW.%I, NEW.%I; -- pk_column, parent_column
+				END IF;
+
+				/* Step 1: detach subtree from old ancestors */
+				DELETE FROM %I -- closure_table_name
+				WHERE %I IN ( -- descendant_id_column_name
+					SELECT %I FROM %I WHERE %I = NEW.%I -- descendant_id_column_name, closure_table_name, ancestor_id_column_name, pk_column
+				)
+				AND %I NOT IN ( -- ancestor_id_column_name
+					SELECT %I FROM %I WHERE %I = NEW.%I -- descendant_id_column_name, closure_table_name, ancestor_id_column_name, pk_column
+				);
+
+				/* Step 2: reattach under new parent (skip if moving to root) */
+				IF NEW.%I IS NOT NULL THEN -- parent_column
+					INSERT INTO %I (%I, %I, %I) -- closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
+					SELECT a.%I, d.%I, a.%I + d.%I + 1 -- ancestor_id_column_name, descendant_id_column_name, depth_column_name, depth_column_name
+					FROM %I a -- closure_table_name
+					JOIN %I d ON d.%I = NEW.%I -- closure_table_name, ancestor_id_column_name, pk_column
+					WHERE a.%I = NEW.%I -- descendant_id_column_name, parent_column
+					ON CONFLICT (%I, %I) DO UPDATE -- ancestor_id_column_name, descendant_id_column_name
+						SET %I = EXCLUDED.%I; -- depth_column_name, depth_column_name
+				END IF;
+
+			ELSIF TG_OP = 'DELETE' then -- parent_column, parent_column
+				-- FIXME
+				delete from %I -- closure_table_name
+				where %I = OLD.%I; -- descendant_id_column_name, pk_column
+
+			ELSIF TG_OP = 'TRUNCATE' then
+				delete from %I; -- closure_table_name
+
+
+			END IF;
+
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+    $f$
+        , trg_func_name
+        , pk_column, pk_column
+        , table_name
+        , pk_column, pk_column
+        , parent_column, pk_column
+        , table_name, pk_column
+        , parent_column
+        , closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
+        , parent_column, parent_column
+        , parent_column
+        , closure_table_name
+        , ancestor_id_column_name, pk_column
+        , descendant_id_column_name, parent_column
+        , depth_column_name
+        , pk_column, parent_column
+        , closure_table_name
+        , descendant_id_column_name
+        , descendant_id_column_name, closure_table_name, ancestor_id_column_name, pk_column
+        , ancestor_id_column_name
+        , descendant_id_column_name, closure_table_name, ancestor_id_column_name, pk_column
+        , parent_column
+        , closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
+        , ancestor_id_column_name, descendant_id_column_name, depth_column_name, depth_column_name
+        , closure_table_name
+        , closure_table_name, ancestor_id_column_name, pk_column
+        , descendant_id_column_name, parent_column
+        , ancestor_id_column_name, descendant_id_column_name
+        , depth_column_name, depth_column_name
+        , parent_column, parent_column
+        , closure_table_name
+        , descendant_id_column_name, pk_column
+        , closure_table_name
+	);
+
+    -- Drop existing trigger if exists
+    execute format('DROP TRIGGER IF EXISTS %I ON %I;', trg_name, table_name);
+
+    -- Create the trigger
+    execute format($trg$
+        CREATE TRIGGER %I AFTER INSERT OR UPDATE OF %I ON %I -- trg_name, parent_column, table_name
+         FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
+		 $trg$
+		 ,
+        trg_name, parent_column, table_name,
+		trg_func_name
+    );
+
+	execute format($inner_proc$
+		CREATE OR REPLACE PROCEDURE _pgf_internal_refresh_%I() -- id
+		LANGUAGE plpgsql AS $inner_proc2$
+		BEGIN
+			/* Full refresh of closure table. */
+			delete from %I; -- closure_table_name
+
+			WITH RECURSIVE paths AS (
+				/* Base case: every node is its own ancestor at depth 0 */
+				SELECT %I AS ancestor_id, %I AS descendant_id, 0 AS depth -- pk_column, pk_column
+				FROM %I -- table_name
+				UNION ALL
+				/* Recursive case: extend existing paths one level further down */
+				SELECT p.ancestor_id as ancestor_id, e.%I AS descendant_id, p.depth + 1 as depth -- pk_column
+				FROM paths p
+				JOIN %I e ON e.%I = p.descendant_id -- table_name, parent_column
+			)
+			INSERT INTO %I (%I, %I, %I) -- closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
+			SELECT ancestor_id, descendant_id, depth FROM paths;
+		END;
+		$inner_proc2$
+	$inner_proc$
+        , id
+        , closure_table_name
+        , pk_column, pk_column
+        , table_name
+        , pk_column
+        , table_name, parent_column
+        , closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
+	);
+    -- Full refresh: update all levels in the table
+	call pgf_refresh(id);
+
+END;
+$proc$;
 
 --------------------------------------------------------------------------------
 -- INHERITANCE_TABLE

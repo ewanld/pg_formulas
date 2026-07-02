@@ -51,11 +51,20 @@ class TestModule(unittest.TestCase):
     # --------------------------------------------------------------------
 
     # assert that the sql query returns a single row containing a single scalar equal to expected value.
-    def assert_sql_equal(self, sql, expected, params=()):
+    def assert_sql_equal_scalar(self, sql, expected, params=()):
         self.cur.execute(sql, params)
         result = self.cur.fetchone()
         self.assertEqual(list(result.values())[0], expected)
 
+    # assert that the sql query returns rows equals to the list of tuples returned
+    def assert_sql_equal_list(self, sql, expected_record_list, params=()):
+        records = self.fetch_all(sql, params)
+        actual_record_list = [tuple(record.values()) for record in records]
+        self.assertListEqual(
+            actual_record_list,
+            expected_record_list
+        )
+    
     # assert that the sql query returns a single row containing a single scalar equal to one of the expected values from the expected_list.
     def assert_sql_in(self, sql, expected_list, params=()):
         self.cur.execute(sql, params)
@@ -151,9 +160,16 @@ class TestModule(unittest.TestCase):
 
             case 'treelevel':
                 self.cur.execute("drop table if exists node cascade;");
-                self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int)")
+                self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int);")
                 if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'node', 'id', 'parent_id', 'level')", (id,))
+                    self.cur.execute(f"call pgf_{kind}(%s, 'node', 'id', 'parent_id', 'level');", (id,))
+
+            case 'treeclosure_table':
+                self.cur.execute("drop table if exists node cascade;");
+                self.cur.execute("drop table if exists node_closure cascade;");
+                self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int);")
+                if (create_formula):
+                    self.cur.execute(f"call pgf_{kind}(%s, 'node', 'id', 'parent_id');", (id,))
 
             case 'intersect_table':
                 self.cur.execute("drop table if exists a cascade;");
@@ -189,24 +205,25 @@ class TestModule(unittest.TestCase):
     # --------------------------------------------------------------------
     def test_enable_disable_drop(self):
         kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table',
-                 'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg']
+                 'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg',
+                 'treeclosure_table']
         for kind in kinds:
             for i in range(1, 2):
                 id = f'{kind}_id'
                 self.create_tables(kind, id)
-                self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
+                self.assert_sql_equal_scalar("select count(*) from pgf_metadata m where m.id=%s;", 1, (id,))
                 self.cur.execute("commit");
                 self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
                 self.cur.execute("commit");
                 self.cur.execute("call pgf_set_enabled(%s, false)", (id,));
                 self.cur.execute("call pgf_set_enabled(%s, true)", (id,));
                 self.cur.execute("call pgf_drop(%s)", (id,));
-                self.assert_sql_equal("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
+                self.assert_sql_equal_scalar("select count(*) from pgf_metadata m where m.id=%s;", 0, (id,))
                 # ensure no internal objects remain in current schema matching pgf_internal_*_{id}
                 records = self.fetch_all("select proname from pg_proc p where p.proname like '_pgf_internal_%%_' || %s;", (id,) )
                 self.assertListEqual(records, [])
-                self.assert_sql_equal("select count(*) from pg_proc p where p.proname like '_pgf_internal_%%_' || %s;", 0, (id,) )
-                self.assert_sql_equal( "select count(*) from pg_trigger t where t.tgname like '_pgf_internal_%%_' || %s;",0, (id,) )
+                self.assert_sql_equal_scalar("select count(*) from pg_proc p where p.proname like '_pgf_internal_%%_' || %s;", 0, (id,) )
+                self.assert_sql_equal_scalar( "select count(*) from pg_trigger t where t.tgname like '_pgf_internal_%%_' || %s;",0, (id,) )
                 self.cur.execute("commit");
     
     # --------------------------------------------------------------------
@@ -253,43 +270,43 @@ class TestModule(unittest.TestCase):
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
 
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 2)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 1)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 2)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 1)
 
         # test 2 : delete invoices
         self.cur.execute("delete from invoice where id in (1, 3);")
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 1)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 0)
 
         # test 3 : manual refresh
         self.cur.execute("update customer set invoice_count=0;")
         self.cur.execute(f"call pgf_refresh(%s);", (formula_id,))
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 1)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 0)
 
         # test 4 : truncate table
         self.cur.execute("truncate table invoice;")
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 0)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 0)
 
         # test 5 : delete whole table
         self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
         self.cur.execute("delete from invoice;")
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 0)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 0)
 
         # test 6 : update invoice customer, verify that counts are OK
         self.cur.execute("insert into invoice (id, name, customer_id) values(1, 'invoice 1', 1), (2, 'invoice 2', 1), (3, 'invoice 3', 2);")
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 2)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 1)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 2)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 1)
         
         self.cur.execute("update invoice set customer_id=2 where id=2")
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 1)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 1)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 2)
         
         self.cur.execute("update invoice set customer_id=1")
-        self.assert_sql_equal("select invoice_count from customer where id=1;", 3)
-        self.assert_sql_equal("select invoice_count from customer where id=2;", 0)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=1;", 3)
+        self.assert_sql_equal_scalar("select invoice_count from customer where id=2;", 0)
 
         # clean up
         # self.cur.execute("drop table if exists invoice cascade;");
@@ -309,15 +326,15 @@ class TestModule(unittest.TestCase):
 
         # test : insert invoice
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 10.0)
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.5)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 15.5)
 
         # test : delete invoice
         self.cur.execute("delete from invoice where id = 1")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 5.5)
         self.cur.execute("delete from invoice where id = 2")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 0.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 0.0)
 
     def test_sum_update(self):
         formula_id = 'sum2'
@@ -327,20 +344,20 @@ class TestModule(unittest.TestCase):
         self.cur.execute("insert into customer(id, name) values(1, 'customer A'), (2, 'customer B');")
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.0)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 15.0)
 
         # test : update invoice amount
         self.cur.execute("update invoice set amount=8.0 where id=1;")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 13.0)
 
         # test : update invoice name -> expected no change 
         self.cur.execute("update invoice set name='invoice 1 new' where id=1;")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 13.0)
         
         # test : update invoice customer
         self.cur.execute("update invoice set customer_id=2 where id=1;")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.0)
-        self.assert_sql_equal("select sum_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 5.0)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=2;", 8.0)
         
     def test_sum_insert_with_filter(self):
         formula_id = 'sum_insert_with_filter'
@@ -359,8 +376,8 @@ class TestModule(unittest.TestCase):
         # | id | name      | customer_id | amount | deleted |
         # | 1  | invoice 1 | 1           | 10.0   | false   |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 10.0)
-        # self.assert_sql_equal("select sum_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 10.0)
+        # self.assert_sql_equal_scalar("select sum_amount from customer where id=2;", None)
 
         # test : insert invoice
         # Contents of invoice table at the end of the step:
@@ -369,7 +386,7 @@ class TestModule(unittest.TestCase):
         # | 2  | invoice 2 | 1           | 5.5    | false   |
         # | 3  | invoice 3 | 1           | 5.5    | true    |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 5.5)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 15.5)
 
         # test : insert invoice
         # Contents of invoice table at the end of the step:
@@ -378,16 +395,16 @@ class TestModule(unittest.TestCase):
         # | 2  | invoice 2 | 1           | 5.5    | false   |
         # | 3  | invoice 3 | 1           | 5.5    | true    |
         self.cur.execute("insert into invoice (id, name, customer_id, amount, deleted) values(3, 'invoice 3', 1, 5.5, true)")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 15.5)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 15.5)
 
         # test : delete invoice
         # Contents of invoice table at the end of the step:
         # | id | name      | customer_id | amount | deleted |
         # | 2  | invoice 2 | 1           | 5.5    | false   |
         self.cur.execute("delete from invoice where id = 1")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 5.5)
         self.cur.execute("delete from invoice where id = 3")
-        self.assert_sql_equal("select sum_amount from customer where id=1;", 5.5)
+        self.assert_sql_equal_scalar("select sum_amount from customer where id=1;", 5.5)
 
     def test_min(self):
         formula_id = 'min1'
@@ -409,11 +426,11 @@ class TestModule(unittest.TestCase):
         # | 1 | invoice 1 | 1 | 10.0 |
         # | 2 | invoice 2 | 2 | 8.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", None)
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 2, 8.0)")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : insert new invoice with amount > min_amount : expected no change
         # Contents of invoice table:
@@ -423,8 +440,8 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 2 | 8.0 |
         # | 3 | invoice 3 | 1 | 11.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(3, 'invoice 3', 1, 11.0)")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
         
         # test : insert new invoice with amount < min_amount : expected updated min_value
         # Contents of invoice table:
@@ -435,8 +452,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 11.0 |
         # | 4 | invoice 4 | 1 | 5.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(4, 'invoice 4', 1, 5.0)")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 5.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 5.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount < min amount): expected updated min_value
         # Contents of invoice table:
@@ -447,8 +464,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 4.0 |
         self.cur.execute("update invoice set amount = 4.0 where id=4")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 4.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 4.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount < min amount): expected updated min_value
         # Contents of invoice table:
@@ -459,8 +476,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 4.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount = min amount): expected no change
         # Contents of invoice table:
@@ -471,8 +488,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount = min amount): expected no change
         # Contents of invoice table:
@@ -483,8 +500,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 2.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=4")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount < min amount): expected updated min_value
         # Contents of invoice table:
@@ -495,8 +512,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 2.0 |
         # | 4 | invoice 4 | 1 | 2.0 |
         self.cur.execute("update invoice set amount = 2.0 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 2.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 2.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount = min amount): expected no change
         # Contents of invoice table:
@@ -507,8 +524,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 2.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 2.0 where id=4")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 2.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 2.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
     
         # test : update invoice amount (new amount > min amount): expected no change
         # Contents of invoice table:
@@ -519,8 +536,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=4")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 2.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 2.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount > min amount): expected updated min_value
         # Contents of invoice table:
@@ -531,8 +548,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -543,8 +560,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 3.0)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -555,8 +572,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 1 where id=2")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 3.0)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -567,8 +584,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 1 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", None)
         
         # test : update invoice FK
         # Contents of invoice table:
@@ -579,8 +596,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=2")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -591,8 +608,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=1")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : update invoice FK + amount
         # Contents of invoice table:
@@ -603,8 +620,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 4.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id=2, amount=4.0 where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 4.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 4.0)
 
         # test : delete invoice (with amount > min_amount): expected no change
         # Contents of invoice table:
@@ -614,8 +631,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 4.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("delete from invoice where id=1")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 4.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 4.0)
 
         # test : delete invoice (with amount = min_amount): expected min_amount updated
         # Contents of invoice table:
@@ -624,8 +641,8 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 2 | 8.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("delete from invoice where id=3")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", 8.0)
 
         # test : delete invoice (with amount = min_amount): expected min_amount updated
         # Contents of invoice table:
@@ -633,8 +650,8 @@ class TestModule(unittest.TestCase):
         # | --- | --- | --- | --- |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("delete from invoice where id=2")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", None)
 
         # test : delete invoice (with amount = min_amount): expected min_amount updated
         # Contents of invoice table:
@@ -644,11 +661,11 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 1 | 4.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 5.0)")
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 4.0)")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 3.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 3.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", None)
         self.cur.execute("delete from invoice where id=4")
-        self.assert_sql_equal("select min_amount from customer where id=1;", 4.0)
-        self.assert_sql_equal("select min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=1;", 4.0)
+        self.assert_sql_equal_scalar("select min_amount from customer where id=2;", None)
 
     def test_id_of_min(self):
         formula_id = 'id_of_min1'
@@ -669,8 +686,8 @@ class TestModule(unittest.TestCase):
         # | --- | --- | --- | --- |
         # | 1 | invoice 1 | 1 | 10.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 1)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 1)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", None)
 
         # test : insert first invoice for customer
         # Contents of invoice table:
@@ -679,8 +696,8 @@ class TestModule(unittest.TestCase):
         # | 1 | invoice 1 | 1 | 10.0 |
         # | 2 | invoice 2 | 2 | 8.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 2, 8.0)")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 1)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 1)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : insert new invoice with amount > min_amount : expected no change
         # Contents of invoice table:
@@ -690,8 +707,8 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 2 | 8.0 |
         # | 3 | invoice 3 | 1 | 11.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(3, 'invoice 3', 1, 11.0)")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 1)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 1)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
         
         # test : insert new invoice with amount < min_amount : expected updated min_value
         # Contents of invoice table:
@@ -702,8 +719,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 11.0 |
         # | 4 | invoice 4 | 1 | 5.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(4, 'invoice 4', 1, 5.0)")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount (new amount < min amount of already min): expected no change
         # Contents of invoice table:
@@ -714,8 +731,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 11.0 |
         # | 4 | invoice 4 | 1 | 4.0 |
         self.cur.execute("update invoice set amount = 4.0 where id=4")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount (new amount < min amount): expected updated id_of_min
         # Contents of invoice table:
@@ -726,8 +743,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 4.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=3")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 3)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount
         # Contents of invoice table:
@@ -738,8 +755,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 3.0 |
         # | 4 | invoice 4 | 1 | 4.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=3")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 3)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount
         # Contents of invoice table:
@@ -751,7 +768,7 @@ class TestModule(unittest.TestCase):
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=4")
         self.assert_sql_in("select id_of_min_amount from customer where id=1;", [3, 4])
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount (new amount < min amount): expected updated min_value
         # Contents of invoice table:
@@ -762,8 +779,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 2.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 2.0 where id=3")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 3)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount (new amount = min amount): expected no change
         # Contents of invoice table:
@@ -775,7 +792,7 @@ class TestModule(unittest.TestCase):
         # | 4 | invoice 4 | 1 | 2.0 |
         self.cur.execute("update invoice set amount = 2.0 where id=4")
         self.assert_sql_in("select id_of_min_amount from customer where id=1;", [3, 4])
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
     
         # test : update invoice amount (new amount > min amount): expected no change
         # Contents of invoice table:
@@ -786,8 +803,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 2.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=4")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 3)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice amount (new amount > min amount): expected updated min_value
         # Contents of invoice table:
@@ -799,7 +816,7 @@ class TestModule(unittest.TestCase):
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set amount = 3.0 where id=3")
         self.assert_sql_in("select id_of_min_amount from customer where id=1;", [3, 4])
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -810,8 +827,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=3")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 3)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -822,8 +839,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 3.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 1 where id=2")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 3)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -835,7 +852,7 @@ class TestModule(unittest.TestCase):
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 1 where id=3")
         self.assert_sql_in("select id_of_min_amount from customer where id=1;", [3, 4])
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", None)
         
         # test : update invoice FK
         # Contents of invoice table:
@@ -847,7 +864,7 @@ class TestModule(unittest.TestCase):
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=2")
         self.assert_sql_in("select id_of_min_amount from customer where id=1;", [3, 4])
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice FK
         # Contents of invoice table:
@@ -859,7 +876,7 @@ class TestModule(unittest.TestCase):
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=1")
         self.assert_sql_in("select id_of_min_amount from customer where id=1;", [3,4])
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : update invoice FK + amount
         # Contents of invoice table:
@@ -870,8 +887,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 4.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("update invoice set customer_id=2, amount=4.0 where id=3")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 3)
 
         # test : delete invoice (with amount > min_amount): expected no change
         # Contents of invoice table:
@@ -881,8 +898,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 2 | 4.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("delete from invoice where id=1")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 3)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 3)
 
         # test : delete invoice (with amount = min_amount): expected min_amount updated
         # Contents of invoice table:
@@ -891,8 +908,8 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 2 | 8.0 |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("delete from invoice where id=3")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", 2)
 
         # test : delete invoice (with amount = min_amount): expected min_amount updated
         # Contents of invoice table:
@@ -900,8 +917,8 @@ class TestModule(unittest.TestCase):
         # | --- | --- | --- | --- |
         # | 4 | invoice 4 | 1 | 3.0 |
         self.cur.execute("delete from invoice where id=2")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", None)
 
         # test : delete invoice (with amount = min_amount): expected min_amount updated
         # Contents of invoice table:
@@ -911,11 +928,11 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 1 | 4.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 5.0)")
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 1, 4.0)")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 4)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 4)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", None)
         self.cur.execute("delete from invoice where id=4")
-        self.assert_sql_equal("select id_of_min_amount from customer where id=1;", 2)
-        self.assert_sql_equal("select id_of_min_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=1;", 2)
+        self.assert_sql_equal_scalar("select id_of_min_amount from customer where id=2;", None)
 
     def test_max(self):
         formula_id = 'max1'
@@ -936,8 +953,8 @@ class TestModule(unittest.TestCase):
         # | --- | --- | --- | --- |
         # | 1 | invoice 1 | 1 | 10.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(1, 'invoice 1', 1, 10.0)")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", None)
 
         # test : insert
         # Contents of invoice table:
@@ -946,8 +963,8 @@ class TestModule(unittest.TestCase):
         # | 1 | invoice 1 | 1 | 10.0 |
         # | 1 | invoice 1 | 1 | 8.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(2, 'invoice 2', 2, 8.0)")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
         # test : insert new invoice with amount < max_amount : expected no change
         # Contents of invoice table:
@@ -957,8 +974,8 @@ class TestModule(unittest.TestCase):
         # | 2 | invoice 2 | 2 | 8.0 |
         # | 3 | invoice 3 | 1 | 9.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(3, 'invoice 3', 1, 9.0)")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
         # test : insert new invoice with amount > max_amount : expected updated max_amount
         # Contents of invoice table:
@@ -969,8 +986,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 9.0 |
         # | 4 | invoice 4 | 1 | 12.0 |
         self.cur.execute("insert into invoice (id, name, customer_id, amount) values(4, 'invoice 4', 1, 12.0)")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 12.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 12.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount > max_amount): expected updated max_amount
         # Contents of invoice table:
@@ -980,8 +997,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 9.0 |
         # | 4 | invoice 4 | 1 | 13.0 |
         self.cur.execute("update invoice set amount = 13.0 where id=4")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 13.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount = max_amount): expected no change
         # Invoice table after step:
@@ -992,8 +1009,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 9.0 |
         # | 4 | invoice 4 | 1 | 13.0 |
         self.cur.execute("update invoice set amount = 13.0 where id=4")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 13.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
         # test : update invoice amount (new amount < max_amount, invoice is not current max): expected no change
         # Invoice table after step:
@@ -1004,8 +1021,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 7.0 |
         # | 4 | invoice 4 | 1 | 13.0 |
         self.cur.execute("update invoice set amount = 7.0 where id=3")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 13.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 13.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
 
         # test : update invoice amount (current max invoice decreased): expected updated max_amount
@@ -1017,8 +1034,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 7.0 |
         # | 4 | invoice 4 | 1 | 9.0 |
         self.cur.execute("update invoice set amount = 9.0 where id=4")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
 
         # test : update invoice amount (new amount = max_amount): expected no change
@@ -1030,8 +1047,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 7.0 |
         # | 4 | invoice 4 | 1 | 10.0 |
         self.cur.execute("update invoice set amount = 10.0 where id=4")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 8.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 8.0)
 
 
         # test : update invoice FK
@@ -1043,8 +1060,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 7.0 |
         # | 4 | invoice 4 | 2 | 10.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=4")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 10.0)
 
 
         # test : delete invoice (not current max): expected no change
@@ -1055,8 +1072,8 @@ class TestModule(unittest.TestCase):
         # | 3 | invoice 3 | 1 | 7.0 |
         # | 4 | invoice 4 | 2 | 10.0 |
         self.cur.execute("delete from invoice where id=2")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 10.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 10.0)
 
         # test : delete invoice (current max): expected max_amount updated to NULL when no remaining invoices
         # Invoice table after step:
@@ -1065,7 +1082,7 @@ class TestModule(unittest.TestCase):
         # | 1 | invoice 1 | 1 | 10.0 |
         # | 3 | invoice 3 | 1 | 7.0 |
         self.cur.execute("delete from invoice where id=4")
-        self.assert_sql_equal("select max_amount from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", None)
 
         # test : update invoice FK
         # Invoice table after step:
@@ -1074,8 +1091,8 @@ class TestModule(unittest.TestCase):
         # | 1 | invoice 1 | 2 | 10.0 |
         # | 3 | invoice 3 | 1 | 7.0 |
         self.cur.execute("update invoice set customer_id = 2 where id=1")
-        self.assert_sql_equal("select max_amount from customer where id=1;", 7.0)
-        self.assert_sql_equal("select max_amount from customer where id=2;", 10.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=1;", 7.0)
+        self.assert_sql_equal_scalar("select max_amount from customer where id=2;", 10.0)
 
     def test_array_agg_nodistinct_orderbyname_nolimit(self):
         formula_id = 'test_array_agg_nodistinct_orderbyname_nolimit'
@@ -1096,8 +1113,8 @@ class TestModule(unittest.TestCase):
         # | id  | name       | customer_id
         # | 1   | invoice 1  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (1, 'invoice 1', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1105,8 +1122,8 @@ class TestModule(unittest.TestCase):
         # | 1   | invoice 1  | 1
         # | 2   | invoice 2  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (2, 'invoice 2', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1115,8 +1132,8 @@ class TestModule(unittest.TestCase):
         # | 2   | invoice 2  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (4, 'invoice 4', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1126,8 +1143,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 3', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 3", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 3", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
     
         # test: update invoice name
         # Contents of invoice table after step:
@@ -1137,8 +1154,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set name='A invoice 3' where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1148,8 +1165,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 2
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=2 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1159,8 +1176,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=1 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1170,8 +1187,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 2
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=2 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: delete invoice
         # Contents of invoice table after step:
@@ -1180,8 +1197,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("delete from invoice where id=2")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: delete invoice
         # Contents of invoice table after step:
@@ -1189,8 +1206,8 @@ class TestModule(unittest.TestCase):
         # | 1   | invoice 1  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("delete from invoice where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice with duplicate name. Expected : duplicated result must be found in array_agg
         # Contents of invoice table after step:
@@ -1199,8 +1216,8 @@ class TestModule(unittest.TestCase):
         # | 4   | invoice 4  | 1
         # | 3   | invoice 1  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 1', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
     def test_array_agg_nodistinct_orderbyname_limit(self):
         formula_id = 'test_array_agg_nodistinct_orderbyname_limit'
@@ -1221,8 +1238,8 @@ class TestModule(unittest.TestCase):
         # | id  | name       | customer_id
         # | 1   | invoice 1  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (1, 'invoice 1', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1230,8 +1247,8 @@ class TestModule(unittest.TestCase):
         # | 1   | invoice 1  | 1
         # | 2   | invoice 2  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (2, 'invoice 2', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1240,8 +1257,8 @@ class TestModule(unittest.TestCase):
         # | 2   | invoice 2  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (4, 'invoice 4', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1251,8 +1268,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 3', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
     
         # test: update invoice name
         # Contents of invoice table after step:
@@ -1262,8 +1279,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set name='A invoice 3' where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1273,8 +1290,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 2
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=2 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1284,8 +1301,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=1 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["A invoice 3", "invoice 1"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1295,8 +1312,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 2
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=2 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: delete invoice
         # Contents of invoice table after step:
@@ -1305,8 +1322,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("delete from invoice where id=2")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: delete invoice
         # Contents of invoice table after step:
@@ -1314,8 +1331,8 @@ class TestModule(unittest.TestCase):
         # | 1   | invoice 1  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("delete from invoice where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice with duplicate name. Expected : duplicated result must be found in array_agg
         # Contents of invoice table after step:
@@ -1324,8 +1341,8 @@ class TestModule(unittest.TestCase):
         # | 4   | invoice 4  | 1
         # | 3   | invoice 1  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 1', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["invoice 1", "invoice 1"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["invoice 1", "invoice 1"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
     def test_array_agg_distinct_orderbyid_nolimit(self):
         formula_id = 'test_array_agg_distinct_orderbyid_nolimit'
@@ -1346,8 +1363,8 @@ class TestModule(unittest.TestCase):
         # | id  | name       | customer_id
         # | 1   | C-invoice 1  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (1, 'C-invoice 1', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1355,8 +1372,8 @@ class TestModule(unittest.TestCase):
         # | 1   | C-invoice 1  | 1
         # | 2   | B-invoice 2  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (2, 'B-invoice 2', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1365,8 +1382,8 @@ class TestModule(unittest.TestCase):
         # | 2   | B-invoice 2  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (4, 'invoice 4', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice
         # Contents of invoice table after step:
@@ -1376,8 +1393,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'invoice 3', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 3", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 3", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
     
         # test: update invoice name
         # Contents of invoice table after step:
@@ -1387,8 +1404,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set name='A invoice 3' where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "A invoice 3", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "A invoice 3", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1398,8 +1415,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 2
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=2 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1409,8 +1426,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=1 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "A invoice 3", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "A invoice 3", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: update invoice FK
         # Contents of invoice table after step:
@@ -1420,8 +1437,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 2
         # | 4   | invoice 4  | 1
         self.cur.execute("update invoice set customer_id=2 where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "B-invoice 2", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: delete invoice
         # Contents of invoice table after step:
@@ -1430,8 +1447,8 @@ class TestModule(unittest.TestCase):
         # | 3   | invoice 3  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("delete from invoice where id=2")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", ["A invoice 3"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", ["A invoice 3"])
 
         # test: delete invoice
         # Contents of invoice table after step:
@@ -1439,8 +1456,8 @@ class TestModule(unittest.TestCase):
         # | 1   | C-invoice 1  | 1
         # | 4   | invoice 4  | 1
         self.cur.execute("delete from invoice where id=3")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
         # test: insert invoice with duplicate name. Expected : duplicated result must be found in array_agg
         # Contents of invoice table after step:
@@ -1449,8 +1466,8 @@ class TestModule(unittest.TestCase):
         # | 4   | invoice 4  | 1
         # | 3   | invoice 1  | 1
         self.cur.execute("insert into invoice (id, name, customer_id) values (3, 'C-invoice 1', 1)")
-        self.assert_sql_equal("select invoice_names from customer where id=1;", ["C-invoice 1", "invoice 4"])
-        self.assert_sql_equal("select invoice_names from customer where id=2;", None)
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=1;", ["C-invoice 1", "invoice 4"])
+        self.assert_sql_equal_scalar("select invoice_names from customer where id=2;", None)
 
     def test_minmax_table(self):
         formula_id = 'customer_invoices_agg'
@@ -1618,37 +1635,199 @@ class TestModule(unittest.TestCase):
         
         # test : insert root node
         self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")
-        self.assert_sql_equal("select level from node where id=1;", 0)
+        self.assert_sql_equal_scalar("select level from node where id=1;", 0)
 
         # test : insert level 1 node
         self.cur.execute("insert into node(id, name, parent_id) values(2, 'node 2', 1)")
-        self.assert_sql_equal("select level from node where id=1;", 0)
-        self.assert_sql_equal("select level from node where id=2;", 1)
+        self.assert_sql_equal_scalar("select level from node where id=1;", 0)
+        self.assert_sql_equal_scalar("select level from node where id=2;", 1)
 
         # test : insert level 2 node
         self.cur.execute("insert into node(id, name, parent_id) values(3, 'node 3', 2)")
-        self.assert_sql_equal("select level from node where id=3;", 2)
+        self.assert_sql_equal_scalar("select level from node where id=3;", 2)
 
         # test : update parent of level 2 node with no children --> should become level 1
         self.cur.execute("insert into node(id, name, parent_id) values(4, 'node 4', null)")
         self.cur.execute("update node set parent_id=4 where id=3")
-        self.assert_sql_equal("select level from node where id=3;", 1)
+        self.assert_sql_equal_scalar("select level from node where id=3;", 1)
 
         # test : remove parent of level 1 node with no children --> should become level 0
         self.cur.execute("update node set parent_id=null where id=3")
-        self.assert_sql_equal("select level from node where id=3;", 0)
+        self.assert_sql_equal_scalar("select level from node where id=3;", 0)
 
         # test : update parent of level 1 node with children --> should become level 2 and update children
         self.cur.execute("insert into node(id, name, parent_id) values(5, 'node 5', 1)")
         self.cur.execute("insert into node(id, name, parent_id) values(6, 'node 6', 5)")
         self.cur.execute("insert into node(id, name, parent_id) values(7, 'node 7', 1)")
-        self.assert_sql_equal("select level from node where id=5;", 1)
-        self.assert_sql_equal("select level from node where id=6;", 2)
-        self.assert_sql_equal("select level from node where id=7;", 1)
+        self.assert_sql_equal_scalar("select level from node where id=5;", 1)
+        self.assert_sql_equal_scalar("select level from node where id=6;", 2)
+        self.assert_sql_equal_scalar("select level from node where id=7;", 1)
         self.cur.execute("update node set parent_id=7 where id=5")
-        self.assert_sql_equal("select level from node where id=5;", 2)
-        self.assert_sql_equal("select level from node where id=6;", 3)
+        self.assert_sql_equal_scalar("select level from node where id=5;", 2)
+        self.assert_sql_equal_scalar("select level from node where id=6;", 3)
         self.cur.execute("commit");
+
+    def test_treeclosure_table(self):
+        formula_id = 'treeclosure_table'
+        self.create_tables('treeclosure_table', formula_id)
+        
+        # test : insert root node
+        # Tree structure after step:
+        #   1
+        self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")
+        records = self.fetch_all("select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;")
+        self.assertEqual(len(records), 1)
+        self.assertListEqual(list(records[0].values()), [1, 1, 0])
+
+        # test : insert root node
+        # Tree structure after step:
+        #   1
+        #   2
+        self.cur.execute("insert into node(id, name, parent_id) values(2, 'node 2', null)")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (2, 2, 0)
+        ])
+
+        # test : insert node
+        # Tree structure after step:
+        #   1
+        #   └── 3
+        #   2
+        self.cur.execute("insert into node(id, name, parent_id) values(3, 'node 3', 1)")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (1, 3, 1),
+            (2, 2, 0),
+            (3, 3, 0),
+        ])
+
+        # test : insert node
+        # Tree structure after step:
+        #   1
+        #   └── 3
+        #       └── 4
+        #   2
+        self.cur.execute("insert into node(id, name, parent_id) values(4, 'node 4', 3)")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (1, 3, 1),
+            (1, 4, 2),
+            (2, 2, 0),
+            (3, 3, 0),
+            (3, 4, 1),
+            (4, 4, 0),
+        ])
+
+        # test : insert node
+        # Tree structure after step:
+        #   1
+        #   └── 3
+        #       └── 4
+        #           └── 5
+        #   2
+        self.cur.execute("insert into node(id, name, parent_id) values(5, 'node 5', 4)")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (1, 3, 1),
+            (1, 4, 2),
+            (1, 5, 3),
+            (2, 2, 0),
+            (3, 3, 0),
+            (3, 4, 1),
+            (3, 5, 2),
+            (4, 4, 0),
+            (4, 5, 1),
+            (5, 5, 0),
+        ])
+
+        # test : change node parent
+        # Tree structure after step:
+        #   1
+        #   2
+        #   └── 3
+        #       └── 4
+        #           └── 5
+        self.cur.execute("update node set parent_id = 2 where id=3")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (2, 2, 0),
+            (2, 3, 1),
+            (2, 4, 2),
+            (2, 5, 3),
+            (3, 3, 0),
+            (3, 4, 1),
+            (3, 5, 2),
+            (4, 4, 0),
+            (4, 5, 1),
+            (5, 5, 0),
+        ])
+
+        # test : change node parent
+        # Tree structure after step:
+        #   1
+        #   └── 5
+        #   2
+        #   └── 3
+        #       └── 4
+        self.cur.execute("update node set parent_id = 1 where id=5")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (1, 5, 1),
+            (2, 2, 0),
+            (2, 3, 1),
+            (2, 4, 2),
+            (3, 3, 0),
+            (3, 4, 1),
+            (4, 4, 0),
+            (5, 5, 0),
+        ])
+
+        # test : change node parent
+        # Tree structure after step:
+        #   1
+        #   └── 5
+        #   └── 3
+        #       └── 4
+        #   2
+        self.cur.execute("update node set parent_id = 1 where id=3")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (1, 3, 1),
+            (1, 4, 2),
+            (1, 5, 1),
+            (2, 2, 0),
+            (3, 3, 0),
+            (3, 4, 1),
+            (4, 4, 0),
+            (5, 5, 0),
+        ])
+
+        # test : delete node
+        # Tree structure after step:
+        #   1
+        #   └── 5
+        #   2
+        self.cur.execute("delete from node where id in (3, 4)")
+        self.assert_sql_equal_list(
+            "select ancestor_id, descendant_id, depth from node_closure order by ancestor_id, descendant_id;", [
+            (1, 1, 0),
+            (1, 5, 1),
+            (2, 2, 0),
+            (5, 5, 0),
+        ])
+
+
+        # clean up
+        self.drop_formula(formula_id)
+
 
     def test_inheritance_table_BASE_TO_SUB(self):
         # set up
@@ -1662,8 +1841,8 @@ class TestModule(unittest.TestCase):
         # test : insert bike
         bike_id = 1
         self.cur.execute(f"insert into vehicle(discriminator, id, common_attribute1, bike_attribute1, car_attribute1) values('bike', {bike_id}, 'commonval1', 'bikeval1', null)")
-        self.assert_sql_equal("select count(*) from bike;", 1)
-        self.assert_sql_equal("select count(*) from car;", 0)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 1)
+        self.assert_sql_equal_scalar("select count(*) from car;", 0)
         record = self.fetch_one(f"select * from bike where id={bike_id}")
         self.assertEqual(record['id'], bike_id)
         self.assertEqual(record['common_attribute1'], 'commonval1')
@@ -1672,8 +1851,8 @@ class TestModule(unittest.TestCase):
         # test : insert car
         car_id = 2
         self.cur.execute(f"insert into vehicle(discriminator, id, common_attribute1, bike_attribute1, car_attribute1) values('car', {car_id}, 'commonval2', null, 2.0)")
-        self.assert_sql_equal("select count(*) from bike;", 1)
-        self.assert_sql_equal("select count(*) from car;", 1)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 1)
+        self.assert_sql_equal_scalar("select count(*) from car;", 1)
         record = self.fetch_one(f"select * from car where id={car_id}")
         self.assertEqual(record['id'], car_id)
         self.assertEqual(record['common_attribute1'], 'commonval2')
@@ -1681,29 +1860,29 @@ class TestModule(unittest.TestCase):
 
         # test : update bike attribute bike_attribute1
         self.cur.execute(f"update vehicle set bike_attribute1='val2' where id={bike_id}")
-        self.assert_sql_equal(f"select bike_attribute1 from bike where id={bike_id}", 'val2')
+        self.assert_sql_equal_scalar(f"select bike_attribute1 from bike where id={bike_id}", 'val2')
 
         # test : update bike attribute common_attribute1
         self.cur.execute(f"update vehicle set common_attribute1='commonval3' where id={bike_id}")
-        self.assert_sql_equal(f"select common_attribute1 from bike where id={bike_id}", 'commonval3')
+        self.assert_sql_equal_scalar(f"select common_attribute1 from bike where id={bike_id}", 'commonval3')
 
         # test : update car attribute car_attribute1
         self.cur.execute(f"update vehicle set car_attribute1=3.0 where id={car_id}")
-        self.assert_sql_equal(f"select car_attribute1 from car where id={car_id}", Decimal(3.0))
+        self.assert_sql_equal_scalar(f"select car_attribute1 from car where id={car_id}", Decimal(3.0))
 
         # test : update car attribute common_attribute1
         self.cur.execute(f"update vehicle set common_attribute1='commonval4' where id={car_id}")
-        self.assert_sql_equal(f"select common_attribute1 from car where id={car_id}", 'commonval4')
+        self.assert_sql_equal_scalar(f"select common_attribute1 from car where id={car_id}", 'commonval4')
 
         # test : delete bike
         self.cur.execute(f"delete from vehicle where id={bike_id}")
-        self.assert_sql_equal("select count(*) from bike;", 0)
-        self.assert_sql_equal("select count(*) from car;", 1)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 0)
+        self.assert_sql_equal_scalar("select count(*) from car;", 1)
         
         # test : delete car
         self.cur.execute(f"delete from vehicle where id={car_id}")
-        self.assert_sql_equal("select count(*) from bike;", 0)
-        self.assert_sql_equal("select count(*) from car;", 0)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 0)
+        self.assert_sql_equal_scalar("select count(*) from car;", 0)
 
         self.cur.execute("commit");
 
@@ -1719,9 +1898,9 @@ class TestModule(unittest.TestCase):
         # test : insert bike
         bike_id = 1
         self.cur.execute(f"insert into bike(id, common_attribute1, bike_attribute1) values({bike_id}, 'commonval1', 'bikeval1')")
-        self.assert_sql_equal("select count(*) from vehicle;", 1)
-        self.assert_sql_equal("select count(*) from bike;", 1)
-        self.assert_sql_equal("select count(*) from car;", 0)
+        self.assert_sql_equal_scalar("select count(*) from vehicle;", 1)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 1)
+        self.assert_sql_equal_scalar("select count(*) from car;", 0)
         record = self.fetch_one(f"select * from vehicle where id={bike_id}")
         self.assertEqual(record['id'], bike_id)
         self.assertEqual(record['discriminator'], 'bike')
@@ -1732,9 +1911,9 @@ class TestModule(unittest.TestCase):
         # test : insert car
         car_id = 2
         self.cur.execute(f"insert into car(id, common_attribute1, car_attribute1) values({car_id}, 'commonval2', 2.0)")
-        self.assert_sql_equal("select count(*) from vehicle;", 2)
-        self.assert_sql_equal("select count(*) from bike;", 1)
-        self.assert_sql_equal("select count(*) from car;", 1)
+        self.assert_sql_equal_scalar("select count(*) from vehicle;", 2)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 1)
+        self.assert_sql_equal_scalar("select count(*) from car;", 1)
         record = self.fetch_one(f"select * from vehicle where id={car_id}")
         self.assertEqual(record['id'], car_id)
         self.assertEqual(record['discriminator'], 'car')
@@ -1744,31 +1923,31 @@ class TestModule(unittest.TestCase):
 
         # test : update bike attribute bike_attribute1
         self.cur.execute(f"update bike set bike_attribute1='val2' where id={bike_id}")
-        self.assert_sql_equal(f"select bike_attribute1 from vehicle where id={bike_id}", 'val2')
+        self.assert_sql_equal_scalar(f"select bike_attribute1 from vehicle where id={bike_id}", 'val2')
 
         # test : update bike attribute common_attribute1
         self.cur.execute(f"update bike set common_attribute1='commonval3' where id={bike_id}")
-        self.assert_sql_equal(f"select common_attribute1 from vehicle where id={bike_id}", 'commonval3')
+        self.assert_sql_equal_scalar(f"select common_attribute1 from vehicle where id={bike_id}", 'commonval3')
 
         # test : update car attribute car_attribute1
         self.cur.execute(f"update car set car_attribute1=3.0 where id={car_id}")
-        self.assert_sql_equal(f"select car_attribute1 from vehicle where id={car_id}", Decimal(3.0))
+        self.assert_sql_equal_scalar(f"select car_attribute1 from vehicle where id={car_id}", Decimal(3.0))
 
         # test : update car attribute common_attribute1
         self.cur.execute(f"update car set common_attribute1='commonval4' where id={car_id}")
-        self.assert_sql_equal(f"select common_attribute1 from vehicle where id={car_id}", 'commonval4')
+        self.assert_sql_equal_scalar(f"select common_attribute1 from vehicle where id={car_id}", 'commonval4')
 
         # test : delete bike
         self.cur.execute(f"delete from bike where id={bike_id}")
-        self.assert_sql_equal("select count(*) from vehicle;", 1)
-        self.assert_sql_equal("select count(*) from bike;", 0)
-        self.assert_sql_equal("select count(*) from car;", 1)
+        self.assert_sql_equal_scalar("select count(*) from vehicle;", 1)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 0)
+        self.assert_sql_equal_scalar("select count(*) from car;", 1)
         
         # test : delete car
         self.cur.execute(f"delete from car where id={car_id}")
-        self.assert_sql_equal("select count(*) from vehicle;", 0)
-        self.assert_sql_equal("select count(*) from bike;", 0)
-        self.assert_sql_equal("select count(*) from car;", 0)
+        self.assert_sql_equal_scalar("select count(*) from vehicle;", 0)
+        self.assert_sql_equal_scalar("select count(*) from bike;", 0)
+        self.assert_sql_equal_scalar("select count(*) from car;", 0)
 
         self.cur.execute("commit");
         
@@ -1870,23 +2049,23 @@ class TestModule(unittest.TestCase):
 
         # add row1 in each table --> expect 1 row in intersect_table
         self.cur.execute("insert into a(column1, column2) values('row1', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 0)
         self.cur.execute("insert into b(column1, column2) values('row1', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 0)
         self.cur.execute("insert into c(column1, column2) values('row1', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
         
         # add row1 in each table --> expect 2 rows in intersect_table
         self.cur.execute("insert into a(column1, column2) values('row2', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
         self.cur.execute("insert into b(column1, column2) values('row2', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
         self.cur.execute("insert into c(column1, column2) values('row2', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 2)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 2)
 
         # delete row1 from a single table --> expect 1 row in intersect_table
         self.cur.execute("delete from c where (column1, column2) = ('row1', 10);")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
 
         self.drop_formula(formula_id)
 
@@ -1896,22 +2075,22 @@ class TestModule(unittest.TestCase):
         self.create_tables('intersect_table', formula_id);
 
         self.cur.execute("insert into a(column1, column2, column3) values('row1', 10, '1');")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 0)
 
         self.cur.execute("insert into b(column1, column2, column3) values('row1', 10, '1');")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 0)
 
         self.cur.execute("insert into c(column1, column2, column3) values('row1', 10, '1');")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
 
         self.cur.execute("insert into a(column1, column2, column3) values('row1', 10, '2');")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
 
         self.cur.execute("delete from a where (column1, column2, column3) = ('row1', 10, '1');")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 1)
 
         self.cur.execute("delete from a where (column1, column2, column3) = ('row1', 10, '2');")
-        self.assert_sql_equal("select count(*) from intersect_table where is_intersect = true;", 0)
+        self.assert_sql_equal_scalar("select count(*) from intersect_table where is_intersect = true;", 0)
 
         self.drop_formula(formula_id)
 
@@ -1921,23 +2100,23 @@ class TestModule(unittest.TestCase):
 
         # add row1 in each table --> expect 1 row in union_table
         self.cur.execute("insert into a(column1, column2) values('row1', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 1)
         self.cur.execute("insert into b(column1, column2) values('row1', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 1)
         self.cur.execute("insert into c(column1, column2) values('row1', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 1)
         
         # add row1 in each table --> expect 2 rows in union_table
         self.cur.execute("insert into a(column1, column2) values('row2', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 2)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 2)
 
         # delete row1 from all tables --> expect 1 row in union_table
         self.cur.execute("delete from a where (column1, column2) = ('row1', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 2)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 2)
         self.cur.execute("delete from b where (column1, column2) = ('row1', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 2)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 2)
         self.cur.execute("delete from c where (column1, column2) = ('row1', 10);")
-        self.assert_sql_equal("select count(*) from union_table where is_union = true;", 1)
+        self.assert_sql_equal_scalar("select count(*) from union_table where is_union = true;", 1)
 
         self.drop_formula(formula_id)
 
