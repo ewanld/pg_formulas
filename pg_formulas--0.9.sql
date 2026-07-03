@@ -2032,10 +2032,7 @@ BEGIN
 				SELECT ancestor_id, descendant_id, depth FROM paths;
 
 			ELSIF TG_OP = 'UPDATE' then
-			    /* Only act if parent_id actually changed */
-				IF NEW.%I IS NOT DISTINCT FROM OLD.%I THEN -- parent_column, parent_column
-					RETURN NEW;
-				END IF;
+			    /* Only act if parent_id actually changed : handled by trigger definition */
 
 				/* Cycle detection */
 				IF NEW.%I IS NOT NULL AND EXISTS ( -- parent_column
@@ -2068,15 +2065,12 @@ BEGIN
 						SET %I = EXCLUDED.%I; -- depth_column_name, depth_column_name
 				END IF;
 
-			ELSIF TG_OP = 'DELETE' then -- parent_column, parent_column
-				-- FIXME
+			ELSIF TG_OP = 'DELETE' then
 				delete from %I -- closure_table_name
-				where %I = OLD.%I; -- descendant_id_column_name, pk_column
-
+				where %I = OLD.%I -- ancestor_id_column_name, pk_column
+				   OR %I = OLD.%I; -- descendant_id_column_name, pk_column
 			ELSIF TG_OP = 'TRUNCATE' then
 				delete from %I; -- closure_table_name
-
-
 			END IF;
 
             RETURN NEW;
@@ -2091,7 +2085,6 @@ BEGIN
         , table_name, pk_column
         , parent_column
         , closure_table_name, ancestor_id_column_name, descendant_id_column_name, depth_column_name
-        , parent_column, parent_column
         , parent_column
         , closure_table_name
         , ancestor_id_column_name, pk_column
@@ -2111,10 +2104,11 @@ BEGIN
         , descendant_id_column_name, parent_column
         , ancestor_id_column_name, descendant_id_column_name
         , depth_column_name, depth_column_name
-        , parent_column, parent_column
         , closure_table_name
+        , ancestor_id_column_name, pk_column
         , descendant_id_column_name, pk_column
         , closure_table_name
+
 	);
 
     -- Drop existing trigger if exists
@@ -2122,8 +2116,8 @@ BEGIN
 
     -- Create the trigger
     execute format($trg$
-        CREATE TRIGGER %I AFTER INSERT OR UPDATE OF %I ON %I -- trg_name, parent_column, table_name
-         FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
+		CREATE TRIGGER %I AFTER INSERT OR UPDATE OF %I OR DELETE ON %I -- trg_name, parent_column, table_name
+		 FOR EACH ROW EXECUTE FUNCTION %I(); -- trg_func_name
 		 $trg$
 		 ,
         trg_name, parent_column, table_name,
