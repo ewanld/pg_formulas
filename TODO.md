@@ -29,7 +29,7 @@ Functions to implement:
   * 🟠TODO : TREE_ID_OF_MAX
 
 **Aggregate hierarchical data into a dedicated table:**
-  * 🟠IN PROGRESS : TREE_CLOSURE_TABLE
+  * 🟢DONE : TREE_CLOSURE_TABLE
   * 🟠TODO : TREE_SUM_TABLE
   * 🟠TODO : TREE_COUNT_TABLE
   
@@ -38,7 +38,7 @@ Functions to implement:
   * 🟢DONE : UNION_TABLE
   * 🟢DONE : INTERSECT_TABLE
   * 🟠TODO : EXCEPT_TABLE
-  * 🟠TODO : DIFF_TABLE
+  * 🟠TODO : DIFF_TABLE (compare rows left/right, plus compare fields)
   
 **Synchronize database fields:**
   * 🟠TODO : JOIN
