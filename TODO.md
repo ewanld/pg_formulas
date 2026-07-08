@@ -20,11 +20,18 @@ Functions to implement:
 **Aggreate hierarchical data  into a single database field:**
   * 🟢DONE : TREE_LEVEL
   * 🟠TODO : TREE_PATH
-  * 🟠TODO : TREEHEIGHT
+  * 🟠TODO : TREE_HEIGHT
+  * 🟠TODO : TREE_SUM
+  * 🟠TODO : TREE_COUNT
+  * 🟠TODO : TREE_MIN
+  * 🟠TODO : TREE_MAX
+  * 🟠TODO : TREE_ID_OF_MIN
+  * 🟠TODO : TREE_ID_OF_MAX
 
 **Aggregate hierarchical data into a dedicated table:**
   * 🟠IN PROGRESS : TREE_CLOSURE_TABLE
-  * 🟠
+  * 🟠TODO : TREE_SUM_TABLE
+  * 🟠TODO : TREE_COUNT_TABLE
   
 **Combine and compare tables:**
   * 🟢DONE : INHERITANCE_TABLE
