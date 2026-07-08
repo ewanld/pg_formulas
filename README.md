@@ -69,28 +69,34 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 **Aggregate data into a dedicated table**:
   * [MINMAX_TABLE](#MINMAX_TABLE-formula): Store min and max values from a table (along with the id of those rows), with optional GROUP BY. (If no GROUP BY is provided, it counts all rows.)
   * [SUM_TABLE](#SUM_TABLE-formula): Sum rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
-  * [COUNT_TABLE](#COUNT_TABLE-formula): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
+  * [COUNT_TABLE](#COUNT_TABLE-formula): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)<br>Arguments: table name, group by column.
   * [TOPN_TABLE](#TOPN_TABLE-formula): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max).
 
-**Merge, split, or join tables:**
-  * [INHERITANCE_TABLE](#INHERITANCE_TABLE-formula): Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables.
+**Combine and compare tables:**
+  * [INHERITANCE_TABLE](#INHERITANCE_TABLE-formula): Merge multiple tables into one while keeping the base table and sub-tables synchronized.
   * [UNION_TABLE](#UNION_TABLE-formula): Compute the union of multiple tables into one.
   * [INTERSECT_TABLE](#INTERSECT_TABLE-formula): Compute the intersection of multiple tables into one.
   * [EXCEPT_TABLE](#EXCEPT_TABLE-formula): Compute the difference of two tables (```A EXCEPT B```).
+  * [DIFF_TABLE](#DIFF_TABLE-formula): compare two tables.
 
 **Synchronize database fields:**
   * [JOIN](#JOIN-formula): In the case of a 1-to-0..1 join, copy the value(s) of one or more joined columns into the main table.
   * [SYNC](#SYNC-formula): Synchronize two fields from the same table row.
   * [JSON_FIELD](#JSON-formula): Set the value of a JSONB field to be the contents of a table column.
 
-**Auditing changes:**
+**Audit changes:**
   * [REVDATE](#REVDATE-formula): Automatically update a 'last_modified' column.
   * [AUDIT_TABLE](#AUDIT_TABLE-formula): Populate a history (audit) table.
+  * [VERSION_TABLE](#VERSION_TABLE-formula): Enable versionning of table rows in a dedicated versionning table.
  
-**Working with trees:**
+**Aggregate hierarchical data into a single database field:**
   * [TREELEVEL](#TREELEVEL-formula): Update a "level" column in a table representing a tree structure.
   * [TREEPATH](#TREEPATH-formula): Update a "path" column in a table representing a tree structure.
+  * [TREEHEIGHT](#TREEHEIGHT-formula): Update a "height" column in a table representing a tree structure.
+
+**Aggregate hierarchical data into a dedicated table:**
   * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE-formula): Update a closure table representing all ancestor-descendant pairs for each node.
+  * [TREESUM_TABLE]
 
  
 
@@ -672,7 +678,7 @@ Additional options :
 TODO
 
 ## INHERITANCE_TABLE formula
-**_Merge multiple tables into one, while keeping data in-sync between the base table and the sub-tables._**
+**_Merge multiple tables into one while keeping the base table and sub-tables synchronized._**
 
 Synchronization between the base (union) table an sub-tables is unidirectional but can go any way (changes to the base table are propagated to sub-tables, or changes to sub-tables are propagated to the base table).
 
@@ -863,6 +869,7 @@ Given the table table_name:
 * For update operations, when ```column1```'s value is modified but not ```column2```, ```column2``` is set to ```column1```'s value (and vice versa). In particular, if ```column1```'s value is modified to ```NULL```, ```column2```'s value is modified to ```NULL``` as well. (and vice versa). When both columns are modified, ```column1``` takes precedence : ```column2``` is set to ```column1```'s value.
 
 This formula is particularly useful for renaming a column in zero-downtime migration scenarios, as it allows both the old version (which updates the original column) and the new version (which updates the renamed column) to run concurrently.
+
 
 
 # Recipes

@@ -29,14 +29,19 @@ Functions to implement:
   * 🟠TODO : JSON_FIELD
   * 🟠TODO : DIGEST
 
-**Auditing changes:**
+**Audit changes:**
   * 🟢DONE : REVDATE
   * 🟢DONE : AUDIT_TABLE
+  * 🟠TODO : VERSION_TABLE (same as audit_table but with version_number, version_started_at, version_ended_at)
  
-**Working with trees:**
+**Aggreate hierarchical data  into a single database field:**
   * 🟢DONE : TREELEVEL
   * 🟠TODO : TREEPATH
+  * 🟠TODO : TREEHEIGHT
+
+**Aggregate hierarchical data into a dedicated table:**
   * 🟠IN PROGRESS : TREECLOSURE_TABLE
+  * 🟠
 
 # Formula implementation checklist
 * pg_formulas.sql: implement procedure pgf_XXXX
@@ -63,3 +68,5 @@ Functions to implement:
 * COUNT : implement filter (use SUM as example)
 * PGF_MIN, PGF_MAX : add tests with row_filter clause
 * publish extension and update README to show CREATE EXTENSION usage.
+* SUM_TABLE: add stddev, skewness, kurtosis as an option
+* 
