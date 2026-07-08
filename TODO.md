@@ -17,11 +17,21 @@ Functions to implement:
   * 🟠TODO : COUNT_TABLE
   * 🟠TODO : TOPN_TABLE
 
-**Merge, split, or join tables:**
+**Aggreate hierarchical data  into a single database field:**
+  * 🟢DONE : TREE_LEVEL
+  * 🟠TODO : TREE_PATH
+  * 🟠TODO : TREEHEIGHT
+
+**Aggregate hierarchical data into a dedicated table:**
+  * 🟠IN PROGRESS : TREE_CLOSURE_TABLE
+  * 🟠
+  
+**Combine and compare tables:**
   * 🟢DONE : INHERITANCE_TABLE
   * 🟢DONE : UNION_TABLE
   * 🟢DONE : INTERSECT_TABLE
   * 🟠TODO : EXCEPT_TABLE
+  * 🟠TODO : DIFF_TABLE
   
 **Synchronize database fields:**
   * 🟠TODO : JOIN
@@ -34,14 +44,7 @@ Functions to implement:
   * 🟢DONE : AUDIT_TABLE
   * 🟠TODO : VERSION_TABLE (same as audit_table but with version_number, version_started_at, version_ended_at)
  
-**Aggreate hierarchical data  into a single database field:**
-  * 🟢DONE : TREE_LEVEL
-  * 🟠TODO : TREE_PATH
-  * 🟠TODO : TREEHEIGHT
 
-**Aggregate hierarchical data into a dedicated table:**
-  * 🟠IN PROGRESS : TREECLOSURE_TABLE
-  * 🟠
 
 # Formula implementation checklist
 * pg_formulas.sql: implement procedure pgf_XXXX

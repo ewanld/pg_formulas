@@ -68,24 +68,25 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 **Aggregate data into a dedicated table**:
   * [MINMAX_TABLE](#MINMAX_TABLE-formula): Store min and max values from a table (along with the id of those rows), with optional GROUP BY. (If no GROUP BY is provided, it counts all rows.)
-  * [SUM_TABLE](#SUM_TABLE-formula): Sum rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all rows.)<br>Arguments: table name, group by column.
-  * [COUNT_TABLE](#COUNT_TABLE-formula): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)<br>Arguments: table name, group by column.
+  * [SUM_TABLE](#SUM_TABLE-formula): Sum rows from a table, with optional GROUP BY (If no GROUP BY is provided, it sums all rows.)
+  * [COUNT_TABLE](#COUNT_TABLE-formula): Count rows from a table, with optional GROUP BY (If no GROUP BY is provided, it counts all rows.)
   * [TOPN_TABLE](#TOPN_TABLE-formula): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max).
 
 **Aggregate hierarchical data into a single database field:**
   * [TREE_LEVEL](#TREE_LEVEL-formula): Update a "level" column in a table representing a tree structure.
   * [TREE_PATH](#TREE_PATH-formula): Update a "path" column in a table representing a tree structure.
-  * [TREEHEIGHT](#TREEHEIGHT-formula): Update a "height" column in a table representing a tree structure.
-  * [TREESUM](#SUM-formula) : Update a field that sums linked elements.
-  * [TREECOUNT](#COUNT-formula) : Update a field that counts the number of linked elements.
-  * [TREEMIN](#MIN-formula) : Update a field that stores the min value among linked elements.
-  * [TREEMAX](#MAX-formula) : Update a field that stores the max value among linked elements.
-  * [TREEID_OF_MIN](#ID_OF_MIN-formula) : Update a field that stores the id of the linked row with the minimum value.
-  * [TREEID_OF_MAX](#ID_OF_MAX-formula) : Update a field that stores the id of the linked row with the maximum value.
+  * [TREE_HEIGHT](#TREEHEIGHT-formula): Update a "height" column in a table representing a tree structure.
+  * [TREE_SUM](#SUM-formula) : Update a field that sums descendant elements.
+  * [TREE_COUNT](#COUNT-formula) : Update a field that counts the number of descendant elements.
+  * [TREE_MIN](#MIN-formula) : Update a field that stores the min value among descendant elements.
+  * [TREE_MAX](#MAX-formula) : Update a field that stores the max value among descendant elements.
+  * [TREE_ID_OF_MIN](#ID_OF_MIN-formula) : Update a field that stores the id of the descendant row with the minimum value.
+  * [TREE_ID_OF_MAX](#ID_OF_MAX-formula) : Update a field that stores the id of the descendant row with the maximum value.
   
 **Aggregate hierarchical data into a dedicated table:**
-  * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE-formula): Update a closure table representing all ancestor-descendant pairs for each node.
-  * [TREESUM_TABLE]
+  * [TREE_CLOSURE_TABLE](#TREE_CLOSURE_TABLE-formula): Update a closure table representing all ancestor-descendant pairs for each node.
+  * [TREE_SUM_TABLE](#SUM_TABLE-formula): Sum descendant rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it sums all descendant rows.)
+  * [TREE_COUNT_TABLE](#COUNT_TABLE-formula): Count descendant rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all descendant rows.)
   
 **Combine and compare tables:**
   * [INHERITANCE_TABLE](#INHERITANCE_TABLE-formula): Merge multiple tables into one while keeping the base table and sub-tables synchronized.

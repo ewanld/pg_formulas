@@ -175,7 +175,7 @@ begin
 		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
     	execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
 
-	ELSIF kind = 'treeclosure_table' then
+	ELSIF kind = 'tree_closure_table' then
 		table_name := args->>'table_name';
 		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
     	execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
@@ -304,12 +304,12 @@ begin
 		end if;
 		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_tree_level_trg_%s;', table_name, enable_fragment, id);
 
-	elsif kind = 'treeclosure_table' then
+	elsif kind = 'tree_closure_table' then
 		table_name := args->>'table_name';
 		if enabled then
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
-		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_treeclosure_table_trg_%s;', table_name, enable_fragment, id);
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_tree_closure_table_trg_%s;', table_name, enable_fragment, id);
 
 
 	elsif kind = 'inheritance_table' then
@@ -1951,14 +1951,14 @@ $proc$;
 
 
 --------------------------------------------------------------------------------
--- TREECLOSURE_TABLE
+-- TREE_CLOSURE_TABLE
 --------------------------------------------------------------------------------
 -- Arguments:
 --   id TEXT: Unique identifier for this trigger set
 --   table_name TEXT: Name of the table
 --   pk_column TEXT: Name of the primary key column
 --   parent_column TEXT: Name of the column referencing the parent node (nullable for root)
-CREATE OR REPLACE PROCEDURE pgf_treeclosure_table(
+CREATE OR REPLACE PROCEDURE pgf_tree_closure_table(
     id TEXT,
     table_name TEXT,
     pk_column TEXT,
@@ -1966,8 +1966,8 @@ CREATE OR REPLACE PROCEDURE pgf_treeclosure_table(
 	options JSONB DEFAULT '{}'::JSONB
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
-    trg_func_name TEXT := format('_pgf_internal_treeclosure_table_trgfun_%s', id);
-    trg_name TEXT := format('_pgf_internal_treeclosure_table_trg_%s', id);
+    trg_func_name TEXT := format('_pgf_internal_tree_closure_table_trgfun_%s', id);
+    trg_name TEXT := format('_pgf_internal_tree_closure_table_trg_%s', id);
 	closure_table_name TEXT;
 	ancestor_id_column_name TEXT;
 	descendant_id_column_name TEXT;
@@ -1981,7 +1981,7 @@ BEGIN
 		'depth_column_name', 'depth'
 	) || options;
 
-	call _pgf_internal_insert_metadata(id, 'treeclosure_table', jsonb_build_object(
+	call _pgf_internal_insert_metadata(id, 'tree_closure_table', jsonb_build_object(
 		'table_name', table_name,
 		'pk_column', pk_column,
 		'parent_column', parent_column,
