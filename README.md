@@ -72,6 +72,21 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
   * [COUNT_TABLE](#COUNT_TABLE-formula): Count rows from a table, with optional GROUP BY.<br>(If no GROUP BY is provided, it counts all rows.)<br>Arguments: table name, group by column.
   * [TOPN_TABLE](#TOPN_TABLE-formula): Retrieve the top N min/max values from a table. Arguments: table name, column to sort, group by column, number of top results to keep, filtering where condition, operation (min or max).
 
+**Aggregate hierarchical data into a single database field:**
+  * [TREE_LEVEL](#TREE_LEVEL-formula): Update a "level" column in a table representing a tree structure.
+  * [TREEPATH](#TREEPATH-formula): Update a "path" column in a table representing a tree structure.
+  * [TREEHEIGHT](#TREEHEIGHT-formula): Update a "height" column in a table representing a tree structure.
+  * [TREESUM](#SUM-formula) : Update a field that sums linked elements.
+  * [TREECOUNT](#COUNT-formula) : Update a field that counts the number of linked elements.
+  * [TREEMIN](#MIN-formula) : Update a field that stores the min value among linked elements.
+  * [TREEMAX](#MAX-formula) : Update a field that stores the max value among linked elements.
+  * [TREEID_OF_MIN](#ID_OF_MIN-formula) : Update a field that stores the id of the linked row with the minimum value.
+  * [TREEID_OF_MAX](#ID_OF_MAX-formula) : Update a field that stores the id of the linked row with the maximum value.
+  
+**Aggregate hierarchical data into a dedicated table:**
+  * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE-formula): Update a closure table representing all ancestor-descendant pairs for each node.
+  * [TREESUM_TABLE]
+  
 **Combine and compare tables:**
   * [INHERITANCE_TABLE](#INHERITANCE_TABLE-formula): Merge multiple tables into one while keeping the base table and sub-tables synchronized.
   * [UNION_TABLE](#UNION_TABLE-formula): Compute the union of multiple tables into one.
@@ -88,15 +103,6 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
   * [REVDATE](#REVDATE-formula): Automatically update a 'last_modified' column.
   * [AUDIT_TABLE](#AUDIT_TABLE-formula): Populate a history (audit) table.
   * [VERSION_TABLE](#VERSION_TABLE-formula): Enable versionning of table rows in a dedicated versionning table.
- 
-**Aggregate hierarchical data into a single database field:**
-  * [TREELEVEL](#TREELEVEL-formula): Update a "level" column in a table representing a tree structure.
-  * [TREEPATH](#TREEPATH-formula): Update a "path" column in a table representing a tree structure.
-  * [TREEHEIGHT](#TREEHEIGHT-formula): Update a "height" column in a table representing a tree structure.
-
-**Aggregate hierarchical data into a dedicated table:**
-  * [TREECLOSURE_TABLE](#TREECLOSURE_TABLE-formula): Update a closure table representing all ancestor-descendant pairs for each node.
-  * [TREESUM_TABLE]
 
  
 

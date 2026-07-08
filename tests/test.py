@@ -158,7 +158,7 @@ class TestModule(unittest.TestCase):
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'name', 'customer_name');", (id,))
 
-            case 'treelevel':
+            case 'tree_level':
                 self.cur.execute("drop table if exists node cascade;");
                 self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int);")
                 if (create_formula):
@@ -204,7 +204,7 @@ class TestModule(unittest.TestCase):
     # COMMUN FUNCTIONS TESTS
     # --------------------------------------------------------------------
     def test_enable_disable_drop(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'treelevel', 'inheritance_table', 'audit_table',
+        kinds = ['revdate', 'count', 'minmax_table', 'tree_level', 'inheritance_table', 'audit_table',
                  'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg',
                  'treeclosure_table']
         for kind in kinds:
@@ -1629,9 +1629,9 @@ class TestModule(unittest.TestCase):
         self.assertEqual(record['row_count'], 1)
 
 
-    def test_treelevel(self):
-        formula_id = 'treelevel_node'
-        self.create_tables('treelevel', formula_id)
+    def test_tree_level(self):
+        formula_id = 'tree_level_node'
+        self.create_tables('tree_level', formula_id)
         
         # test : insert root node
         self.cur.execute("insert into node(id, name, parent_id) values(1, 'node 1', null)")

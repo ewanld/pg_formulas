@@ -170,7 +170,7 @@ begin
 		execute format('drop trigger if exists _pgf_internal_%s_trg_%I on %I;', kind, id, table_name);
 		execute format('drop function if exists _pgf_internal_%s_trgfun_%I()', kind, id);
 
-	ELSIF kind = 'treelevel' then
+	ELSIF kind = 'tree_level' then
 		table_name := args->>'table_name';
 		execute format('DROP TRIGGER IF EXISTS _pgf_internal_%s_trg_%I ON %I;', kind, id, table_name);
     	execute format('DROP FUNCTION IF EXISTS _pgf_internal_%s_trgfun_%I();', kind, id);
@@ -297,12 +297,12 @@ begin
 		end if;
 		execute format('alter table %I %s trigger _pgf_internal_minmax_table_trg_%I;', table_name, enable_fragment, id);
 
-	elsif kind = 'treelevel' then
+	elsif kind = 'tree_level' then
 		table_name := args->>'table_name';
 		if enabled then
 			execute format('LOCK TABLE %I IN EXCLUSIVE MODE;', table_name); -- allow reads but not writes
 		end if;
-		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_treelevel_trg_%s;', table_name, enable_fragment, id);
+		execute format('ALTER TABLE %I %s TRIGGER _pgf_internal_tree_level_trg_%s;', table_name, enable_fragment, id);
 
 	elsif kind = 'treeclosure_table' then
 		table_name := args->>'table_name';
@@ -1786,16 +1786,16 @@ $proc$;
 
 
 --------------------------------------------------------------------------------
--- TREELEVEL
+-- TREE_LEVEL
 --------------------------------------------------------------------------------
--- TREELEVEL: Update a "level" column in a table representing a tree structure.
+-- TREE_LEVEL: Update a "level" column in a table representing a tree structure.
 -- Arguments:
 --   id TEXT: Unique identifier for this trigger set
 --   table_name TEXT: Name of the table
 --   pk_column TEXT: Name of the primary key column
 --   parent_column TEXT: Name of the column referencing the parent node (nullable for root)
 --   level_column TEXT: Name of the column to store the level (integer, must exist in table)
-CREATE OR REPLACE PROCEDURE pgf_treelevel(
+CREATE OR REPLACE PROCEDURE pgf_tree_level(
     id TEXT,
     table_name TEXT,
     pk_column TEXT,
@@ -1803,10 +1803,10 @@ CREATE OR REPLACE PROCEDURE pgf_treelevel(
     level_column TEXT
 ) LANGUAGE plpgsql AS $proc$
 DECLARE
-    trg_func_name TEXT := format('_pgf_internal_treelevel_trgfun_%s', id);
-    trg_name TEXT := format('_pgf_internal_treelevel_trg_%s', id);
+    trg_func_name TEXT := format('_pgf_internal_tree_level_trgfun_%s', id);
+    trg_name TEXT := format('_pgf_internal_tree_level_trg_%s', id);
 BEGIN
-	call _pgf_internal_insert_metadata(id, 'treelevel', jsonb_build_object(
+	call _pgf_internal_insert_metadata(id, 'tree_level', jsonb_build_object(
 		'table_name', table_name,
 		'pk_column', pk_column,
 		'parent_column', parent_column,

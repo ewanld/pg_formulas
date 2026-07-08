@@ -35,7 +35,7 @@ Functions to implement:
   * 🟠TODO : VERSION_TABLE (same as audit_table but with version_number, version_started_at, version_ended_at)
  
 **Aggreate hierarchical data  into a single database field:**
-  * 🟢DONE : TREELEVEL
+  * 🟢DONE : TREE_LEVEL
   * 🟠TODO : TREEPATH
   * 🟠TODO : TREEHEIGHT
 
