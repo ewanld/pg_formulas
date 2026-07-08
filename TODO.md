@@ -36,7 +36,7 @@ Functions to implement:
  
 **Aggreate hierarchical data  into a single database field:**
   * 🟢DONE : TREE_LEVEL
-  * 🟠TODO : TREEPATH
+  * 🟠TODO : TREE_PATH
   * 🟠TODO : TREEHEIGHT
 
 **Aggregate hierarchical data into a dedicated table:**

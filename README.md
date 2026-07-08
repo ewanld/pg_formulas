@@ -74,7 +74,7 @@ All subsequent ```INSERT```/```UPDATE```/```DELETE``` operations on the ```custo
 
 **Aggregate hierarchical data into a single database field:**
   * [TREE_LEVEL](#TREE_LEVEL-formula): Update a "level" column in a table representing a tree structure.
-  * [TREEPATH](#TREEPATH-formula): Update a "path" column in a table representing a tree structure.
+  * [TREE_PATH](#TREE_PATH-formula): Update a "path" column in a table representing a tree structure.
   * [TREEHEIGHT](#TREEHEIGHT-formula): Update a "height" column in a table representing a tree structure.
   * [TREESUM](#SUM-formula) : Update a field that sums linked elements.
   * [TREECOUNT](#COUNT-formula) : Update a field that counts the number of linked elements.
