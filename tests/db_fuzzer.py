@@ -31,6 +31,24 @@ class ColumnModel:
         self.data_type = data_type
         self.is_nullable = is_nullable
 
+    def __repr__(self) -> str:
+        return f"ColumnModel(name={self.name}, data_type={self.data_type}, is_nullable={self.is_nullable})"
+
+
+    def __eq__(self, other):
+        """Compare by content, not memory address"""
+        if not isinstance(other, ColumnModel):
+            return False
+        return self.name == other.name and self.data_type == other.data_type and self.is_nullable == other.is_nullable
+    
+
+class ForeignKeyModel:
+    def __init__(self, name: str, columns: list[str], referenced_table: str, referenced_columns: list[str]):
+        self.name = name
+        self.columns = columns  # list of column names in this table
+        self.referenced_table = referenced_table
+        self.referenced_columns = referenced_columns  # list of column names in referenced table
+
 class TableId:
     def __init__(self, values: dict[str, Any]):
         # runtime validation: ensure values is a dict with string keys
@@ -44,10 +62,11 @@ class TableId:
     
 
 class TableModel:
-    def __init__(self, name, columns: list[ColumnModel], pk: list[ColumnModel], ids: list[TableId]):
+    def __init__(self, name, columns: list[ColumnModel], pk: list[ColumnModel], ids: list[TableId], foreign_keys: list[ForeignKeyModel] | None = None):
         self.name = name
         self.columns = columns
         self.pk = pk
+        self.foreign_keys = foreign_keys or []
         pk_names = {col.name for col in pk}
         self.non_pk_columns = [col for col in columns if col.name not in pk_names]
         self.__ids_values_tuples = {self.convert_table_id_to_tuple(id) for id in ids}
@@ -201,12 +220,46 @@ class DbFuzzer:
             pk_models = [c for c in columns if c.name in col_names]
             pk_column_names = ', '.join(c.name for c in pk_models)
 
+            fk_query = """
+                SELECT tc.constraint_name,
+                       kcu.column_name,
+                       ccu.table_name AS foreign_table_name,
+                       ccu.column_name AS foreign_column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                JOIN information_schema.constraint_column_usage ccu
+                    ON tc.constraint_name = ccu.constraint_name
+                    AND tc.table_schema = ccu.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                    AND tc.table_schema = current_schema()
+                    AND tc.table_name = %s
+                ORDER BY tc.constraint_name, kcu.ordinal_position
+            """
+            self.cur.execute(fk_query, (table_name,))
+            fk_rows = self.cur.fetchall()
+
+            foreign_keys = []
+            if fk_rows:
+                grouped_rows: dict[str, list[dict[str, Any]]] = {}
+                for row in fk_rows:
+                    grouped_rows.setdefault(row['constraint_name'], []).append(row)
+
+                for constraint_name, rows in grouped_rows.items():
+                    foreign_keys.append(ForeignKeyModel(
+                        name=constraint_name,
+                        columns=[row['column_name'] for row in rows],
+                        referenced_table=rows[0]['foreign_table_name'],
+                        referenced_columns=[row['foreign_column_name'] for row in rows],
+                    ))
+
             query = f"SELECT {pk_column_names} FROM {table_name}"
             self.cur.execute(query)
             ids_info = self.cur.fetchall()
             ids = [ TableId(i) for i in ids_info ]
 
-            tables.append(TableModel(name=table_name, columns=columns, pk=pk_models, ids = ids))
+            tables.append(TableModel(name=table_name, columns=columns, pk=pk_models, ids=ids, foreign_keys=foreign_keys))
 
         return tables
 
