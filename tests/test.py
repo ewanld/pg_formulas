@@ -6,6 +6,8 @@ import settings
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from tests.test_data_helper import TestDataHelper
+
 class TestModule(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -22,16 +24,16 @@ class TestModule(unittest.TestCase):
         cls.cur = cls.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         schemaName = settings.DATABASE["schema"]
-        cls.cur.execute('drop schema if exists public cascade;')
-        cls.cur.execute('create schema public;')
-        cls.cur.execute(f'SET search_path TO {schemaName}')
+        cls.cur.execute(f'drop schema if exists {schemaName} cascade;')
+        cls.cur.execute(f'create schema {schemaName};')
+        cls.cur.execute(f'SET search_path TO {schemaName};')
         
         current_dir = Path(__file__).resolve().parent
 
-        
         cls.execute_sql_file(current_dir / '../pg_formulas--0.9.sql')
         cls.cur.execute("commit;")
-
+        cls.test_data_helper = TestDataHelper(cls.cur)
+        
     @classmethod
     def execute_sql_file(cls, sql_file):
         with open(sql_file, 'r') as file:
@@ -78,135 +80,21 @@ class TestModule(unittest.TestCase):
     def fetch_all(self, sql, params=()):
         self.cur.execute(sql, params)
         return self.cur.fetchall()
-    
-        # create a test formula in nominal case
-    def create_tables(self, kind, id, create_formula=True):
-        match kind:
-            case 'revdate':
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("create table customer (id SERIAL PRIMARY KEY, name text, last_modified timestamp default null);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'last_modified')", (id,))
 
-            case 'count':
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("create table customer (id int PRIMARY KEY, name text, invoice_count int default 0);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
-
-            case 'sum':
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default 0);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
-
-            case 'min' | 'max':
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default NULL);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
-
-
-            case 'id_of_min' | 'id_of_max':
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount int default NULL);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'id', 'customer_id', 'amount');", (id,))
-
-            case 'array_agg':
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, invoice_names text[] default NULL);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), visible boolean);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', 'invoice_names', 'invoice', 'customer_id', 'name');", (id,))
-
-            case 'minmax_table':
-                self.cur.execute("drop table if exists customer cascade;");
-                self.cur.execute("drop table if exists invoice cascade;");
-                self.cur.execute(f"drop table if exists agg cascade;");
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'invoice', 'id', 'amount', jsonb_build_object('agg_table', 'agg', 'group_by_column', ARRAY['customer_id', 'country']));", (id,))
-
-            case 'inheritance_table':
-                self.cur.execute("drop table if exists bike cascade;");
-                self.cur.execute("drop table if exists car cascade;");
-                self.cur.execute("drop table if exists vehicle cascade;");
-                self.cur.execute("create table bike(id int, common_attribute1 TEXT, bike_attribute1 TEXT)")
-                self.cur.execute("create table car(id int, common_attribute1 TEXT, car_attribute1 DECIMAL)")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'vehicle', ARRAY['bike', 'car'], 'SUB_TO_BASE')", (id,));
-            
-            case 'audit_table':
-                self.cur.execute("drop table if exists customer cascade;")
-                self.cur.execute("create table customer(id serial primary key, name text, value int);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer_events', ARRAY['customer']);", (id,))
-            
-            case 'sync':
-                self.cur.execute("drop table if exists customer cascade;")
-                self.cur.execute("create table customer(id text, customer_name text, name text);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'name', 'customer_name');", (id,))
-
-            case 'tree_level':
-                self.cur.execute("drop table if exists node cascade;");
-                self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int, level int);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'node', 'id', 'parent_id', 'level');", (id,))
-
-            case 'treeclosure_table':
-                self.cur.execute("drop table if exists node cascade;");
-                self.cur.execute("drop table if exists node_closure cascade;");
-                self.cur.execute("create table node(id int PRIMARY KEY, name text, parent_id int);")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, 'node', 'id', 'parent_id');", (id,))
-
-            case 'intersect_table':
-                self.cur.execute("drop table if exists a cascade;");
-                self.cur.execute("drop table if exists b cascade;");
-                self.cur.execute("drop table if exists c cascade;");
-                self.cur.execute("drop table if exists intersect_table cascade;");
-                self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
-
-            case 'union_table':
-                self.cur.execute("drop table if exists a cascade;");
-                self.cur.execute("drop table if exists b cascade;");
-                self.cur.execute("drop table if exists c cascade;");
-                self.cur.execute("drop table if exists union_table cascade;");
-                self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
-                if (create_formula):
-                    self.cur.execute(f"call pgf_{kind}(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'union_table')", (id,))
-
-            case _:
-                raise ValueError(f"Invalid Argument: {kind}")
-        self.cur.execute("commit");
     
     def drop_formula(self, id):
         self.cur.execute('call pgf_drop(%s)', (id,))
 
+    def create_tables(self, kind, id, create_formula=True):
+        self.test_data_helper.create_tables(kind, id, create_formula)
+        
     # --------------------------------------------------------------------
     # COMMUN FUNCTIONS TESTS
     # --------------------------------------------------------------------
     def test_enable_disable_drop(self):
         kinds = ['revdate', 'count', 'minmax_table', 'tree_level', 'inheritance_table', 'audit_table',
                  'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg',
-                 'treeclosure_table']
+                 'tree_closure_table']
         for kind in kinds:
             for i in range(1, 2):
                 id = f'{kind}_id'
@@ -1667,9 +1555,9 @@ class TestModule(unittest.TestCase):
         self.assert_sql_equal_scalar("select level from node where id=6;", 3)
         self.cur.execute("commit");
 
-    def test_treeclosure_table(self):
-        formula_id = 'treeclosure_table'
-        self.create_tables('treeclosure_table', formula_id)
+    def test_tree_closure_table(self):
+        formula_id = 'tree_closure_table'
+        self.create_tables('tree_closure_table', formula_id)
         
         # test : insert root node
         # Tree structure after step:
@@ -1823,7 +1711,6 @@ class TestModule(unittest.TestCase):
             (2, 2, 0),
             (5, 5, 0),
         ])
-
 
         # clean up
         self.drop_formula(formula_id)
