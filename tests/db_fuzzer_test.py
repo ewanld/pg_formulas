@@ -4,7 +4,7 @@ import psycopg2.extras
 from pathlib import Path
 import settings
 
-from tests.db_fuzzer import ColumnModel, DbFuzzer
+from tests.db_fuzzer import ColumnModel, DbFuzzer, FuzzOptions
 from tests.test_data_helper import TestDataHelper
 
 class TestModule(unittest.TestCase):
@@ -40,10 +40,12 @@ class TestModule(unittest.TestCase):
         cls.cur.execute(sql_commands)
         
 
-    def test_introspect(self):
-        self.test_data_helper.create_tables('count', 'customer_invoices_count')
+    def test_create_db_model(self):
+        testDataStructure = self.test_data_helper.create_tables('count', 'customer_invoices_count')
         fuzzer = DbFuzzer(self.conn, settings.DATABASE["schema"])
-        tables = fuzzer.introspect(['invoice', 'customer'])
+
+        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100)
+        tables = fuzzer.create_db_model(opts)
 
         invoice_table: TableModel = next(table for table in tables if table.name == 'invoice')
         customer_table: TableModel = next(table for table in tables if table.name == 'customer')
@@ -58,5 +60,9 @@ class TestModule(unittest.TestCase):
 
         # primary key assertions
         # expect single-column primary keys named 'id' on both tables
-        self.assertEqual(invoice_table.pk, [ColumnModel('id', 'integer', False)])
-        self.assertEqual(customer_table.pk, [ColumnModel('id', 'integer', False)])
+        self.assertEqual(invoice_table.pk, [ColumnModel('id', 'integer', False, False)])
+        self.assertEqual(customer_table.pk, [ColumnModel('id', 'integer', False, False)])
+
+        # other columns assertions
+        self.assertEqual(customer_table.get_column_by_name('invoice_count'), ColumnModel('invoice_count', 'integer', True, True))
+        self.assertEqual(customer_table.get_column_by_name('name'), ColumnModel('name', 'text', True, False))

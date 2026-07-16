@@ -9,7 +9,7 @@ from pathlib import Path
 from psycopg2.extras import execute_values
 import time
 from db_fuzzer import DbFuzzer, FuzzOptions
-from tests.test_data_helper import TestDataHelper
+from tests.test_data_helper import TestDataHelper, TestDataStructure
 
 
 class TestDbFuzzerModule(unittest.TestCase):
@@ -59,7 +59,7 @@ class TestDbFuzzerModule(unittest.TestCase):
         return self.test_data_helper.create_tables(kind, id, create_formula)
         
     def test_count(self):
-        tables = self.create_tables('count', 'count_formula1')
-        # opts = FuzzOptions(tables, 10)
-        opts = FuzzOptions(["customer"], 1000)
+        testDataStructure: TestDataStructure = self.create_tables('count', 'count_formula1')
+        opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100)
+        # opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 1000)
         self.fuzzer.fuzz(opts)

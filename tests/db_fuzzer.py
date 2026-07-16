@@ -26,20 +26,25 @@ class SqlOpertionType(Enum):
     delete = "delete"
 
 class ColumnModel:
-    def __init__(self, name: str, data_type: str, is_nullable=True):
+    def __init__(self, name: str, data_type: str, is_nullable=True, pgf_managed=False):
         self.name = name
         self.data_type = data_type
         self.is_nullable = is_nullable
+        self.pgf_managed = pgf_managed
 
     def __repr__(self) -> str:
-        return f"ColumnModel(name={self.name}, data_type={self.data_type}, is_nullable={self.is_nullable})"
+        return (
+            f"ColumnModel(name={self.name!r}, data_type={self.data_type!r}, "
+            f"is_nullable={self.is_nullable!r}, pgf_managed={self.pgf_managed!r})"
+        )
 
+    __str__ = __repr__
 
     def __eq__(self, other):
         """Compare by content, not memory address"""
         if not isinstance(other, ColumnModel):
             return False
-        return self.name == other.name and self.data_type == other.data_type and self.is_nullable == other.is_nullable
+        return self.name == other.name and self.data_type == other.data_type and self.is_nullable == other.is_nullable and self.pgf_managed == other.pgf_managed
     
 
 class ForeignKeyModel:
@@ -62,15 +67,20 @@ class TableId:
     
 
 class TableModel:
-    def __init__(self, name, columns: list[ColumnModel], pk: list[ColumnModel], ids: list[TableId], foreign_keys: list[ForeignKeyModel] | None = None):
+    def __init__(self, name, columns: list[ColumnModel], pk: list[ColumnModel], ids: list[TableId], foreign_keys: list[ForeignKeyModel] | None = None, pgf_managed=False):
         self.name = name
         self.columns = columns
         self.pk = pk
         self.foreign_keys = foreign_keys or []
-        pk_names = {col.name for col in pk}
-        self.non_pk_columns = [col for col in columns if col.name not in pk_names]
         self.__ids_values_tuples = {self.convert_table_id_to_tuple(id) for id in ids}
+        self.pgf_managed=pgf_managed
+        self.refresh()
     
+    # manual refresh after a ColumnModel has changed
+    def refresh(self):
+        pk_names = {col.name for col in self.pk}
+        self.non_pk_columns = [col for col in self.columns if col.name not in pk_names and not col.pgf_managed]
+
     def convert_table_id_to_tuple(self, id: TableId):
         return tuple(id.values[col.name] for col in self.pk)
     
@@ -93,6 +103,8 @@ class TableModel:
         tup = self.convert_table_id_to_tuple(id)
         self.__ids_values_tuples.discard(tup)
 
+    def get_column_by_name(self, name: str) -> Optional[ColumnModel]:
+        return next((c for c in self.columns if c.name == name), None)
     
     # generated id is added to the ids attribute.
     def generate_random_id(self) -> TableId:
@@ -100,7 +112,7 @@ class TableModel:
         candidate: dict[str, Any] = {}
         while i < 10000:
             for col in self.pk:
-                candidate[col.name] = DbFuzzer.generate_random_value(col.data_type)
+                candidate[col.name] = DbFuzzer.generate_random_value(col)
             candidate_tableId = TableId(candidate)
             if not self.contains_id(candidate_tableId):
                 self.__ids_values_tuples.add(self.convert_table_id_to_tuple(candidate_tableId))
@@ -112,8 +124,9 @@ class TableModel:
         return len(self.__ids_values_tuples) == 0
     
 class FuzzOptions:
-    def __init__(self, table_names: list[str], iteration_count):
+    def __init__(self, table_names: list[str], pgf_managed_object: str, iteration_count: int):
         self.table_names = table_names
+        self.pgf_managed_object = pgf_managed_object
         self.iteration_count = iteration_count
 
 class DbFuzzer:
@@ -128,7 +141,13 @@ class DbFuzzer:
 
 
     @classmethod
-    def generate_random_value(cls, data_type: str) -> Any:
+    def generate_random_value(cls, column: ColumnModel) -> Any:
+        data_type = column.data_type
+        
+        # 30% of values are NULL
+        if column.is_nullable and rng.random() < 0.3:
+            return None
+        
         normalized = data_type.lower()
 
         if normalized in {
@@ -179,7 +198,7 @@ class DbFuzzer:
 
         raise ValueError(f"Unknown data type : {data_type}")
 
-    def introspect(self, table_names: list[str]) -> list[TableModel]:
+    def __introspect(self, table_names: list[str]) -> list[TableModel]:
         tables = []
         for table_name in table_names:
             query = """
@@ -328,8 +347,35 @@ class DbFuzzer:
         for i in range(opts.iteration_count):
             self.fuzz_single_iteration(opts)
     
+    def create_db_model(self, opts: FuzzOptions) -> list[TableModel]:
+        table_models = self.__introspect(opts.table_names)
+
+        # apply pgf_managed_object to TableModel
+        if '.' in opts.pgf_managed_object:
+            pgf_managed_table_name = opts.pgf_managed_object.split('.')[0]
+            pgf_managed_column_name = opts.pgf_managed_object.split('.')[1]
+        else:
+            pgf_managed_table_name = opts.pgf_managed_object
+            pgf_managed_column_name = None
+
+        pgf_managed_table = next((model for model in table_models if model.name == pgf_managed_table_name), None)
+        if pgf_managed_table is None:
+            raise ValueError(f"No table model found for managed object {opts.pgf_managed_object}")
+        
+        pgf_managed_table.pgf_managed = True
+        if pgf_managed_column_name:
+            pgf_managed_column = pgf_managed_table.get_column_by_name(pgf_managed_column_name)
+            if pgf_managed_column is None:
+                raise ValueError(f"No column model found for managed object {opts.pgf_managed_object}")
+            pgf_managed_column.pgf_managed = True
+
+        for t in table_models:
+            t.refresh()
+        return table_models
+
     def fuzz_single_iteration(self, opts: FuzzOptions):
-        table_models = self.introspect(opts.table_names)
+        table_models = self.create_db_model(opts)
+        
         sql_op = choice(list(SqlOpertionType))
         table = choice(table_models)
         logger.info(f"Executing {sql_op.value} operation on table {table.name}")
@@ -342,8 +388,7 @@ class DbFuzzer:
 
                 insert_values: dict[str, Any] = {}
                 for col in table.non_pk_columns:
-                    if not col.is_nullable or rng.random() > 0.3:
-                        insert_values[col.name] = self.generate_random_value(col.data_type)
+                    insert_values[col.name] = self.generate_random_value(col)
                 self.DbInsertOperation(table, id, insert_values).apply(self.cur)
                 
             case SqlOpertionType.update:
@@ -355,7 +400,7 @@ class DbFuzzer:
                 columns_to_update: list[ColumnModel] = random.sample(table.non_pk_columns, number_of_columns_to_update)
 
                 for col in columns_to_update:
-                    update_values[col.name] = self.generate_random_value(col.data_type)
+                    update_values[col.name] = self.generate_random_value(col)
 
                 self.DbUpdateOperation(table, update_id, update_values).apply(self.cur)
 
