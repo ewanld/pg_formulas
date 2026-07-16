@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 rng = Random()
 
-class SqlOpertionType(Enum):
+class SqlOperationType(Enum):
     insert = "insert"
     update = "update"
     delete = "delete"
@@ -376,14 +376,14 @@ class DbFuzzer:
     def fuzz_single_iteration(self, opts: FuzzOptions):
         table_models = self.create_db_model(opts)
         
-        sql_op = choice(list(SqlOpertionType))
+        sql_op = choice(list(SqlOperationType))
         table = choice(table_models)
         logger.info(f"Executing {sql_op.value} operation on table {table.name}")
         self.apply_sql_operation(sql_op, table)
         
-    def apply_sql_operation(self, op_type: SqlOpertionType, table: TableModel):
+    def apply_sql_operation(self, op_type: SqlOperationType, table: TableModel):
         match(op_type):
-            case SqlOpertionType.insert:
+            case SqlOperationType.insert:
                 id: TableId = table.generate_random_id()
 
                 insert_values: dict[str, Any] = {}
@@ -391,7 +391,7 @@ class DbFuzzer:
                     insert_values[col.name] = self.generate_random_value(col)
                 self.DbInsertOperation(table, id, insert_values).apply(self.cur)
                 
-            case SqlOpertionType.update:
+            case SqlOperationType.update:
                 if table.is_empty():
                     return
                 update_id = table.select_random_id()
@@ -404,7 +404,7 @@ class DbFuzzer:
 
                 self.DbUpdateOperation(table, update_id, update_values).apply(self.cur)
 
-            case SqlOpertionType.delete:
+            case SqlOperationType.delete:
                 if table.is_empty():
                     return
                 delete_id = table.select_random_id()
