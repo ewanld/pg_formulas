@@ -45,10 +45,10 @@ class TestModule(unittest.TestCase):
         fuzzer = DbFuzzer(self.conn, settings.DATABASE["schema"])
 
         opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100)
-        tables = fuzzer.create_db_model(opts)
+        db_model = fuzzer.create_db_model(opts)
 
-        invoice_table: TableModel = next(table for table in tables if table.name == 'invoice')
-        customer_table: TableModel = next(table for table in tables if table.name == 'customer')
+        invoice_table: TableModel = db_model.get_table_by_name('invoice')
+        customer_table: TableModel = db_model.get_table_by_name('customer')
 
         # foreign key assertions
         self.assertEqual(len(invoice_table.foreign_keys), 1)

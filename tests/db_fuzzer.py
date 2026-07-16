@@ -47,6 +47,10 @@ class ColumnModel:
         return self.name == other.name and self.data_type == other.data_type and self.is_nullable == other.is_nullable and self.pgf_managed == other.pgf_managed
     
 
+
+    
+
+
 class ForeignKeyModel:
     def __init__(self, name: str, columns: list[str], referenced_table: str, referenced_columns: list[str]):
         self.name = name
@@ -67,11 +71,12 @@ class TableId:
     
 
 class TableModel:
-    def __init__(self, name, columns: list[ColumnModel], pk: list[ColumnModel], ids: list[TableId], foreign_keys: list[ForeignKeyModel] | None = None, pgf_managed=False):
+    # columns contains all columns, including PKs and FKs
+    def __init__(self, name, columns: list[ColumnModel], pk: list[ColumnModel], ids: list[TableId], foreign_keys: list[ForeignKeyModel] = [], pgf_managed=False):
         self.name = name
         self.columns = columns
         self.pk = pk
-        self.foreign_keys = foreign_keys or []
+        self.foreign_keys = foreign_keys
         self.__ids_values_tuples = {self.convert_table_id_to_tuple(id) for id in ids}
         self.pgf_managed=pgf_managed
         self.refresh()
@@ -79,7 +84,9 @@ class TableModel:
     # manual refresh after a ColumnModel has changed
     def refresh(self):
         pk_names = {col.name for col in self.pk}
+        fk_names = {col.name for col in self.foreign_keys}
         self.non_pk_columns = [col for col in self.columns if col.name not in pk_names and not col.pgf_managed]
+        self.non_pk_fk_columns = [col for col in self.columns if col.name not in pk_names and col.name not in fk_names and not col.pgf_managed]
 
     def convert_table_id_to_tuple(self, id: TableId):
         return tuple(id.values[col.name] for col in self.pk)
@@ -122,7 +129,14 @@ class TableModel:
 
     def is_empty(self):
         return len(self.__ids_values_tuples) == 0
+
+class DbModel:
+    def __init__(self, tables: list[TableModel]):
+        self.tables = tables
     
+    def get_table_by_name(self, name: str) -> Optional[TableModel]:
+        return next((c for c in self.tables if c.name == name), None)
+
 class FuzzOptions:
     def __init__(self, table_names: list[str], pgf_managed_object: str, iteration_count: int):
         self.table_names = table_names
@@ -198,7 +212,7 @@ class DbFuzzer:
 
         raise ValueError(f"Unknown data type : {data_type}")
 
-    def __introspect(self, table_names: list[str]) -> list[TableModel]:
+    def __introspect(self, table_names: list[str]) -> DbModel:
         tables = []
         for table_name in table_names:
             query = """
@@ -280,7 +294,7 @@ class DbFuzzer:
 
             tables.append(TableModel(name=table_name, columns=columns, pk=pk_models, ids=ids, foreign_keys=foreign_keys))
 
-        return tables
+        return DbModel(tables)
 
     class DbOperation(ABC):
         @abstractmethod
@@ -347,8 +361,8 @@ class DbFuzzer:
         for i in range(opts.iteration_count):
             self.fuzz_single_iteration(opts)
     
-    def create_db_model(self, opts: FuzzOptions) -> list[TableModel]:
-        table_models = self.__introspect(opts.table_names)
+    def create_db_model(self, opts: FuzzOptions) -> DbModel:
+        db_model = self.__introspect(opts.table_names)
 
         # apply pgf_managed_object to TableModel
         if '.' in opts.pgf_managed_object:
@@ -358,7 +372,8 @@ class DbFuzzer:
             pgf_managed_table_name = opts.pgf_managed_object
             pgf_managed_column_name = None
 
-        pgf_managed_table = next((model for model in table_models if model.name == pgf_managed_table_name), None)
+        pgf_managed_table = db_model.get_table_by_name(pgf_managed_table_name)
+
         if pgf_managed_table is None:
             raise ValueError(f"No table model found for managed object {opts.pgf_managed_object}")
         
@@ -369,26 +384,33 @@ class DbFuzzer:
                 raise ValueError(f"No column model found for managed object {opts.pgf_managed_object}")
             pgf_managed_column.pgf_managed = True
 
-        for t in table_models:
+        for t in db_model.tables:
             t.refresh()
-        return table_models
+
+        return db_model
 
     def fuzz_single_iteration(self, opts: FuzzOptions):
-        table_models = self.create_db_model(opts)
+        db_model = self.create_db_model(opts)
         
         sql_op = choice(list(SqlOperationType))
-        table = choice(table_models)
+        table = choice(db_model.tables)
         logger.info(f"Executing {sql_op.value} operation on table {table.name}")
-        self.apply_sql_operation(sql_op, table)
+        self.apply_sql_operation(sql_op, table, db_model)
         
-    def apply_sql_operation(self, op_type: SqlOperationType, table: TableModel):
+    def apply_sql_operation(self, op_type: SqlOperationType, table: TableModel, db_model: DbModel):
         match(op_type):
             case SqlOperationType.insert:
                 id: TableId = table.generate_random_id()
 
+                # genere les valeurs pour les colonnes simples (non PK ni FK)
                 insert_values: dict[str, Any] = {}
-                for col in table.non_pk_columns:
+                for col in table.non_pk_fk_columns:
                     insert_values[col.name] = self.generate_random_value(col)
+
+                # generer les valeurs pour les FK
+                for fk in table.foreign_keys:
+                    referenced_table = fk.referenced_table
+
                 self.DbInsertOperation(table, id, insert_values).apply(self.cur)
                 
             case SqlOperationType.update:
