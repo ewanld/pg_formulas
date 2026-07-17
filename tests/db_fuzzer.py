@@ -93,7 +93,7 @@ class TableModel:
     # manual refresh after a ColumnModel has changed
     def refresh(self):
         pk_names = {col.name for col in self.pk}
-        fk_names = {col.name for col in self.foreign_keys}
+        fk_names = {col for fk in self.foreign_keys for col in fk.columns}
         self.non_pk_columns = [col for col in self.columns if col.name not in pk_names and not col.pgf_managed]
         self.non_pk_fk_columns = [col for col in self.columns if col.name not in pk_names and col.name not in fk_names and not col.pgf_managed]
 
@@ -147,10 +147,11 @@ class DbModel:
         return next((c for c in self.tables if c.name == name), None)
 
 class FuzzOptions:
-    def __init__(self, table_names: list[str], pgf_managed_object: str, iteration_count: int):
+    def __init__(self, table_names: list[str], pgf_managed_object: str, iteration_count: int, initial_insert_iteration_count: int):
         self.table_names = table_names
         self.pgf_managed_object = pgf_managed_object
         self.iteration_count = iteration_count
+        self.initial_insert_iteration_count = initial_insert_iteration_count
 
 class DbFuzzer:
     def __init__(self, conn, schema_name):
@@ -179,14 +180,14 @@ class DbFuzzer:
             'bigint', 'int8',
             'serial', 'bigserial', 'smallserial'
         }:
-            return randint(1, 1000)
+            return randint(1, 100000)
 
         if normalized in {'numeric', 'decimal'}:
             decimal = __import__('decimal')
-            return decimal.Decimal(f"{randint(0, 1000)}.{randint(0, 99):02d}")
+            return decimal.Decimal(f"{randint(0, 100000)}.{randint(0, 99):02d}")
 
         if normalized in {'real', 'double precision', 'float4', 'float8'}:
-            return float(randint(0, 1000) + randint(0, 99) / 100)
+            return float(randint(0, 100000) + randint(0, 99) / 100)
 
         if normalized in {'boolean', 'bool'}:
             return choice([True, False])
@@ -343,7 +344,6 @@ class DbFuzzer:
             
             # Remove the deleted ID from table.ids
             self.table.remove_id(self.id)
-            logger.info(f"Removed ID from {self.table.name}: {self.id.values}")
     
     # values should not contain PK columns
     class DbUpdateOperation(DbOperation):
@@ -367,8 +367,13 @@ class DbFuzzer:
 
 
     def fuzz(self, opts : FuzzOptions) -> None:
+        db_model = self.create_db_model(opts)
+
+        for i in range(opts.initial_insert_iteration_count):
+            self.fuzz_single_iteration(db_model, force_sql_op=SqlOperationType.insert)
+
         for i in range(opts.iteration_count):
-            self.fuzz_single_iteration(opts)
+            self.fuzz_single_iteration(db_model)
     
     def create_db_model(self, opts: FuzzOptions) -> DbModel:
         db_model = self.__introspect(opts.table_names)
@@ -398,12 +403,9 @@ class DbFuzzer:
 
         return db_model
 
-    def fuzz_single_iteration(self, opts: FuzzOptions):
-        db_model = self.create_db_model(opts)
-        
-        sql_op = choice(list(SqlOperationType))
+    def fuzz_single_iteration(self, db_model: DbModel, force_sql_op=None):
+        sql_op = force_sql_op if force_sql_op != None else choice(list(SqlOperationType))
         table = choice(db_model.tables)
-        logger.info(f"Executing {sql_op.value} operation on table {table.name}")
         self.apply_sql_operation(sql_op, table, db_model)
         
     def apply_sql_operation(self, op_type: SqlOperationType, table: TableModel, db_model: DbModel):
@@ -420,6 +422,9 @@ class DbFuzzer:
                 for fk in table.foreign_keys:
                     parent_table = db_model.get_table_by_name(fk.parent_table)
                     assert parent_table is not None
+                    if parent_table.is_empty():
+                        logger.info(f"INSERT aborted (parent table {parent_table.name} is empty)")
+                        return
                     id_from_parent: TableId = parent_table.select_random_id()
                     for col_name in id_from_parent.values:
                         child_col_name = fk.get_child_column(col_name)
@@ -429,11 +434,12 @@ class DbFuzzer:
                 
             case SqlOperationType.update:
                 if table.is_empty():
+                    logger.info(f"UPDATE aborted (table {table.name} is empty)")
                     return
                 update_id = table.select_random_id()
                 update_values: dict[str, Any] = {}
-                number_of_columns_to_update = 1 if rng.random() > 0.5 else randint(1, len(table.non_pk_columns))
-                columns_to_update: list[ColumnModel] = random.sample(table.non_pk_columns, number_of_columns_to_update)
+                number_of_columns_to_update = 1 if rng.random() > 0.5 else randint(1, len(table.non_pk_fk_columns))
+                columns_to_update: list[ColumnModel] = random.sample(table.non_pk_fk_columns, number_of_columns_to_update)
 
                 for col in columns_to_update:
                     update_values[col.name] = self.generate_random_value(col)
@@ -442,6 +448,7 @@ class DbFuzzer:
 
             case SqlOperationType.delete:
                 if table.is_empty():
+                    logger.info(f"DELETE aborted (table {table.name} is empty)")
                     return
                 delete_id = table.select_random_id()
                 self.DbDeleteOperation(table, delete_id).apply(self.cur)

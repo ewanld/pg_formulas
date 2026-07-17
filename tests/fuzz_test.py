@@ -60,6 +60,6 @@ class TestDbFuzzerModule(unittest.TestCase):
         
     def test_count(self):
         testDataStructure: TestDataStructure = self.create_tables('count', 'count_formula1')
-        opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100)
-        # opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 1000)
+        # opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100, 100)
+        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 10000)
         self.fuzzer.fuzz(opts)

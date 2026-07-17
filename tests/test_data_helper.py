@@ -24,7 +24,7 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute("create table customer (id int PRIMARY KEY, name text, invoice_count int default 0);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id));")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id) on delete cascade);")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', 'invoice_count', 'invoice', 'customer_id');", (id,))
                 res = TestDataStructure(['invoice', 'customer'], 'customer.invoice_count')
