@@ -2,10 +2,10 @@ from decimal import Decimal
 import psycopg2
 import psycopg2.extras
 import unittest
-import settings
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from tests import settings
 from tests.test_data_helper import TestDataHelper
 
 class TestModule(unittest.TestCase):

@@ -3,12 +3,12 @@ import sys
 from typing import Literal
 import psycopg2
 import unittest
-import settings
 from datetime import datetime, timedelta
 from pathlib import Path
 from psycopg2.extras import execute_values
 import time
-from db_fuzzer import DbFuzzer, FuzzOptions
+from tests import settings
+from tests.db_fuzzer import DbFuzzer, FuzzOptions
 from tests.test_data_helper import TestDataHelper, TestDataStructure
 
 

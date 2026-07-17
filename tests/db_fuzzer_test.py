@@ -2,8 +2,8 @@ import unittest
 import psycopg2
 import psycopg2.extras
 from pathlib import Path
-import settings
 
+from tests import settings
 from tests.db_fuzzer import ColumnModel, DbFuzzer, FuzzOptions
 from tests.test_data_helper import TestDataHelper
 
@@ -53,8 +53,8 @@ class TestModule(unittest.TestCase):
         # foreign key assertions
         self.assertEqual(len(invoice_table.foreign_keys), 1)
         self.assertEqual(invoice_table.foreign_keys[0].columns, ['customer_id'])
-        self.assertEqual(invoice_table.foreign_keys[0].referenced_table, 'customer')
-        self.assertEqual(invoice_table.foreign_keys[0].referenced_columns, ['id'])
+        self.assertEqual(invoice_table.foreign_keys[0].parent_table, 'customer')
+        self.assertEqual(invoice_table.foreign_keys[0].parent_columns, ['id'])
 
         self.assertEqual(customer_table.foreign_keys, [])
 

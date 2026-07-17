@@ -3,11 +3,12 @@ from typing import Literal
 import psycopg2
 import psycopg2.extras
 import unittest
-import settings
 from datetime import datetime, timedelta
 from pathlib import Path
 from psycopg2.extras import execute_values
 import time
+
+from tests import settings
 
 SyncDirection = Literal["BASE_TO_SUB", "SUB_TO_BASE"]
 

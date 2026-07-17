@@ -52,11 +52,20 @@ class ColumnModel:
 
 
 class ForeignKeyModel:
-    def __init__(self, name: str, columns: list[str], referenced_table: str, referenced_columns: list[str]):
+    def __init__(self, name: str, columns: list[str], parent_table: str, parent_columns: list[str]):
         self.name = name
         self.columns = columns  # list of column names in this table
-        self.referenced_table = referenced_table
-        self.referenced_columns = referenced_columns  # list of column names in referenced table
+        self.parent_table = parent_table
+        self.parent_columns = parent_columns  # list of column names in referenced table
+
+    def get_child_column(self, parent_column_name: str) -> str:
+        try:
+            idx = self.parent_columns.index(parent_column_name)
+        except ValueError as exc:
+            raise KeyError(
+                f"Parent column {parent_column_name!r} not found in foreign key {self.name}"
+            ) from exc
+        return self.columns[idx]
 
 class TableId:
     def __init__(self, values: dict[str, Any]):
@@ -283,8 +292,8 @@ class DbFuzzer:
                     foreign_keys.append(ForeignKeyModel(
                         name=constraint_name,
                         columns=[row['column_name'] for row in rows],
-                        referenced_table=rows[0]['foreign_table_name'],
-                        referenced_columns=[row['foreign_column_name'] for row in rows],
+                        parent_table=rows[0]['foreign_table_name'],
+                        parent_columns=[row['foreign_column_name'] for row in rows],
                     ))
 
             query = f"SELECT {pk_column_names} FROM {table_name}"
@@ -402,14 +411,19 @@ class DbFuzzer:
             case SqlOperationType.insert:
                 id: TableId = table.generate_random_id()
 
-                # genere les valeurs pour les colonnes simples (non PK ni FK)
+                # generate values for simple columns (not PK nor FK)
                 insert_values: dict[str, Any] = {}
                 for col in table.non_pk_fk_columns:
                     insert_values[col.name] = self.generate_random_value(col)
 
-                # generer les valeurs pour les FK
+                # generate values for FK columns
                 for fk in table.foreign_keys:
-                    referenced_table = fk.referenced_table
+                    parent_table = db_model.get_table_by_name(fk.parent_table)
+                    assert parent_table is not None
+                    id_from_parent: TableId = parent_table.select_random_id()
+                    for col_name in id_from_parent.values:
+                        child_col_name = fk.get_child_column(col_name)
+                        insert_values[child_col_name] = id_from_parent.values.get(col_name)
 
                 self.DbInsertOperation(table, id, insert_values).apply(self.cur)
                 
