@@ -548,6 +548,9 @@ class DbFuzzer:
                         for col_name in id_from_parent.values:
                             child_col_name = fk.get_child_column(col_name)
                             update_values[child_col_name] = id_from_parent.values.get(col_name)
+                    if len(update_values) == 0:
+                        logger.info("UPDATE aborted: all parent tables are empty")
+                        return
 
                 self.DbUpdateOperation(table, update_id, update_values).apply(self.cur)
 
