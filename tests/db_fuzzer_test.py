@@ -41,10 +41,11 @@ class TestModule(unittest.TestCase):
         
 
     def test_create_db_model(self):
-        testDataStructure = self.test_data_helper.create_tables('count', 'customer_invoices_count')
+        formula_id = 'customer_invoices_count'
+        testDataStructure = self.test_data_helper.create_tables('count', formula_id)
         fuzzer = DbFuzzer(self.conn, settings.DATABASE["schema"])
 
-        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 100)
+        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 100, formula_id)
         db_model = fuzzer.create_db_model(opts)
 
         invoice_table: TableModel = db_model.get_table_by_name('invoice')

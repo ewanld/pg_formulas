@@ -58,8 +58,14 @@ class TestDbFuzzerModule(unittest.TestCase):
     def create_tables(self, kind, id, create_formula=True):
         return self.test_data_helper.create_tables(kind, id, create_formula)
         
-    def test_count(self):
-        testDataStructure: TestDataStructure = self.create_tables('count', 'count_formula1')
-        # opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100, 100)
-        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 10000)
-        self.fuzzer.fuzz(opts)
+    def test_all_kinds(self):
+        kinds = ['revdate', 'count', 'minmax_table', 'tree_level', 'inheritance_table', 'audit_table',
+            'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg',
+            'tree_closure_table']
+        for kind in kinds:
+            formula_id = f"{kind}1"
+            testDataStructure: TestDataStructure = self.create_tables(kind, formula_id)
+
+            # opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100, 100)
+            opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 1000, formula_id=formula_id)
+            self.fuzzer.fuzz(opts)

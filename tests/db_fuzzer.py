@@ -122,6 +122,9 @@ class TableModel:
     def get_column_by_name(self, name: str) -> Optional[ColumnModel]:
         return next((c for c in self.columns if c.name == name), None)
     
+    def get_column_names(self):
+        return (c.name for c in self.columns)
+    
     # generated id is added to the ids attribute.
     def generate_random_id(self) -> TableId:
         i = 0
@@ -139,6 +142,9 @@ class TableModel:
     def is_empty(self):
         return len(self.__ids_values_tuples) == 0
 
+    def get_pgf_managed_column(self) -> Optional[ColumnModel]:
+        return next((c for c in self.columns if c.pgf_managed == True), None)
+    
 class DbModel:
     def __init__(self, tables: list[TableModel]):
         self.tables = tables
@@ -146,12 +152,23 @@ class DbModel:
     def get_table_by_name(self, name: str) -> Optional[TableModel]:
         return next((c for c in self.tables if c.name == name), None)
 
+    def get_pgf_managed_table(self) -> Optional[TableModel]:
+        return next((c for c in self.tables if c.pgf_managed == True), None)
+    
+    def get_pgf_managed_column(self) -> Optional[tuple[TableModel, ColumnModel]]:
+        for t in self.tables:
+            c = t.get_pgf_managed_column()
+            if c is not None:
+                return (t, c)
+        return None
+
 class FuzzOptions:
-    def __init__(self, table_names: list[str], pgf_managed_object: str, iteration_count: int, initial_insert_iteration_count: int):
+    def __init__(self, table_names: list[str], pgf_managed_object: str, initial_insert_iteration_count: int, iteration_count: int, formula_id: str):
         self.table_names = table_names
         self.pgf_managed_object = pgf_managed_object
         self.iteration_count = iteration_count
         self.initial_insert_iteration_count = initial_insert_iteration_count
+        self.formula_id = formula_id
 
 class DbFuzzer:
     def __init__(self, conn, schema_name):
@@ -222,7 +239,7 @@ class DbFuzzer:
 
         raise ValueError(f"Unknown data type : {data_type}")
 
-    def __introspect(self, table_names: list[str]) -> DbModel:
+    def __introspect(self, table_names: set[str]) -> DbModel:
         tables = []
         for table_name in table_names:
             query = """
@@ -367,17 +384,41 @@ class DbFuzzer:
 
 
     def fuzz(self, opts : FuzzOptions) -> None:
+        logger.info(f"testing formula {opts.formula_id}")
         db_model = self.create_db_model(opts)
 
-        for i in range(opts.initial_insert_iteration_count):
-            self.fuzz_single_iteration(db_model, force_sql_op=SqlOperationType.insert)
-
-        for i in range(opts.iteration_count):
-            self.fuzz_single_iteration(db_model)
+        for i in range(opts.initial_insert_iteration_count + opts.iteration_count):
+            force_sql_op = SqlOperationType.insert if i < opts.initial_insert_iteration_count else None
+            self.fuzz_single_iteration(db_model, force_sql_op=force_sql_op)
+            records_before = self.snapshot_pgf_managed_object(db_model)
+            self.cur.execute("call pgf_refresh(%s);", (opts.formula_id,))
+            records_after = self.snapshot_pgf_managed_object(db_model)
+            # logger.info(f"Before: {records_before}, After: {records_after}")
+            assert records_before == records_after, f"Before: {records_before}, After: {records_after}"
+    
+    def snapshot_pgf_managed_object(self, db_model: DbModel):
+        table = db_model.get_pgf_managed_table()
+        if table is not None:
+            return self.snapshot_table(table)
+        else:
+            tc_tuple = db_model.get_pgf_managed_column()
+            assert tc_tuple is not None
+            (table, column) = tc_tuple
+            return self.snapshot_column(table, column)
+    
+    def snapshot_table(self, table: TableModel):
+        query = f"select * from {table.name} order by " + ",".join(table.get_column_names())
+        self.cur.execute(query)
+        records = self.cur.fetchall()
+        return records
+    
+    def snapshot_column(self, table: TableModel, column: ColumnModel):
+        query = f"select {column.name} from {table.name} order by {column.name}"
+        self.cur.execute(query)
+        records = self.cur.fetchall()
+        return records
     
     def create_db_model(self, opts: FuzzOptions) -> DbModel:
-        db_model = self.__introspect(opts.table_names)
-
         # apply pgf_managed_object to TableModel
         if '.' in opts.pgf_managed_object:
             pgf_managed_table_name = opts.pgf_managed_object.split('.')[0]
@@ -385,6 +426,12 @@ class DbFuzzer:
         else:
             pgf_managed_table_name = opts.pgf_managed_object
             pgf_managed_column_name = None
+
+        all_table_names: set[str] = set(opts.table_names)
+        if pgf_managed_table_name is not None:
+            all_table_names.add(pgf_managed_table_name)
+        db_model = self.__introspect(all_table_names)
+
 
         pgf_managed_table = db_model.get_table_by_name(pgf_managed_table_name)
 
@@ -404,9 +451,33 @@ class DbFuzzer:
         return db_model
 
     def fuzz_single_iteration(self, db_model: DbModel, force_sql_op=None):
-        sql_op = force_sql_op if force_sql_op != None else choice(list(SqlOperationType))
+        sql_op = force_sql_op if force_sql_op is not None else choice(list(SqlOperationType))
         table = choice(db_model.tables)
         self.apply_sql_operation(sql_op, table, db_model)
+
+    
+    def select_number_of_fk_to_update(self, table: TableModel):
+        total_fk_count = len(table.foreign_keys)
+        if total_fk_count == 0:
+            return 0
+        
+        val = rng.random()
+        if val < 0.5:
+            return 1
+        else:
+            return randint(1, total_fk_count)
+
+    def select_number_of_columns_to_update(self, table: TableModel):
+        total_column_count = len(table.non_pk_fk_columns)
+        if total_column_count == 0:
+            return 0
+        
+        val = rng.random()
+
+        if val < 0.5:
+            return 1
+        else:
+            return randint(1, total_column_count)
         
     def apply_sql_operation(self, op_type: SqlOperationType, table: TableModel, db_model: DbModel):
         match(op_type):
@@ -438,11 +509,45 @@ class DbFuzzer:
                     return
                 update_id = table.select_random_id()
                 update_values: dict[str, Any] = {}
-                number_of_columns_to_update = 1 if rng.random() > 0.5 else randint(1, len(table.non_pk_fk_columns))
-                columns_to_update: list[ColumnModel] = random.sample(table.non_pk_fk_columns, number_of_columns_to_update)
 
-                for col in columns_to_update:
-                    update_values[col.name] = self.generate_random_value(col)
+                # choose if we udpate FKs (0 -> 0.4), non-FKs (0.4 -> 0.8), or both (0.8 -> 1)
+                if (len(table.non_pk_fk_columns) == 0 and len(table.foreign_keys) == 0):
+                    logger.info(f"UPDATE aborted (no columns to update)")
+                    return
+                elif (len(table.non_pk_fk_columns) > 0 and len(table.foreign_keys) == 0):
+                    update_fks = False
+                    update_non_fks = True
+                elif (len(table.non_pk_fk_columns) == 0 and len(table.foreign_keys) > 0):
+                    update_fks = True
+                    update_non_fks = False
+                else:
+                    column_types_to_update = rng.random()
+                    update_fks = column_types_to_update < 0.4 or column_types_to_update > 0.8
+                    update_non_fks = column_types_to_update >= 0.4
+
+                # update non-FK columns
+                logger.info(f"update_fks={update_fks} update_non_fks={update_non_fks}")
+                if update_non_fks:
+                    number_of_columns_to_update = self.select_number_of_columns_to_update(table)
+                    columns_to_update: list[ColumnModel] = random.sample(table.non_pk_fk_columns, number_of_columns_to_update)
+                    for col in columns_to_update:
+                        update_values[col.name] = self.generate_random_value(col)
+
+                # update FK columns
+                if update_fks:
+                    number_of_fk_to_update = self.select_number_of_fk_to_update(table)
+                    logger.info(f"number_of_fk_to_update={number_of_fk_to_update} len={len(table.foreign_keys)}")
+                    fk_to_update: list[ForeignKeyModel] = random.sample(table.foreign_keys, number_of_fk_to_update)
+                    for fk in fk_to_update:
+                        parent_table = db_model.get_table_by_name(fk.parent_table)
+                        assert parent_table is not None
+                        if parent_table.is_empty():
+                            logger.info("update: parent table is empty")
+                            continue
+                        id_from_parent = parent_table.select_random_id()
+                        for col_name in id_from_parent.values:
+                            child_col_name = fk.get_child_column(col_name)
+                            update_values[child_col_name] = id_from_parent.values.get(col_name)
 
                 self.DbUpdateOperation(table, update_id, update_values).apply(self.cur)
 
