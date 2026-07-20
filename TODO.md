@@ -79,4 +79,4 @@ Functions to implement:
 * PGF_MIN, PGF_MAX : add tests with row_filter clause
 * publish extension and update README to show CREATE EXTENSION usage.
 * SUM_TABLE: add stddev, skewness, kurtosis as an option
-* 
+* MINMAX_TABLE, SUM_TABLE: handle case where aggregate value is NULL --> should be treated as value 0

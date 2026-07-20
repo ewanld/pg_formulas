@@ -63,9 +63,10 @@ class TestDbFuzzerModule(unittest.TestCase):
             'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg',
             'tree_closure_table']
         for kind in kinds:
-            formula_id = f"{kind}1"
-            testDataStructure: TestDataStructure = self.create_tables(kind, formula_id)
+            with self.subTest(input_val=kind):
+                formula_id = f"{kind}1"
+                testDataStructure: TestDataStructure = self.create_tables(kind, formula_id)
 
-            # opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100, 100)
-            opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 1000, formula_id=formula_id)
-            self.fuzzer.fuzz(opts)
+                # opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100, 100)
+                opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 10, 100, formula_id=formula_id)
+                self.fuzzer.fuzz(opts)

@@ -152,15 +152,29 @@ class DbModel:
     def get_table_by_name(self, name: str) -> Optional[TableModel]:
         return next((c for c in self.tables if c.name == name), None)
 
-    def get_pgf_managed_table(self) -> Optional[TableModel]:
+    def __get_pgf_managed_table(self) -> Optional[TableModel]:
         return next((c for c in self.tables if c.pgf_managed == True), None)
     
-    def get_pgf_managed_column(self) -> Optional[tuple[TableModel, ColumnModel]]:
+    def __get_pgf_managed_column(self) -> Optional[tuple[TableModel, ColumnModel]]:
         for t in self.tables:
             c = t.get_pgf_managed_column()
             if c is not None:
                 return (t, c)
         return None
+
+    def __get_non_pgf_managed_tables(self) -> list[TableModel]:
+        res = list(self.tables)
+        pgf_managed_table = self.__get_pgf_managed_table()
+        if pgf_managed_table is not None:
+            res.remove(pgf_managed_table)
+        return res
+    
+    def refresh(self):
+        for t in self.tables:
+            t.refresh()
+        self.pgf_managed_table = self.__get_pgf_managed_table()
+        self.pgf_managed_column = self.__get_pgf_managed_column()
+        self.non_pgf_managed_tables = self.__get_non_pgf_managed_tables()
 
 class FuzzOptions:
     def __init__(self, table_names: list[str], pgf_managed_object: str, initial_insert_iteration_count: int, iteration_count: int, formula_id: str):
@@ -394,14 +408,14 @@ class DbFuzzer:
             self.cur.execute("call pgf_refresh(%s);", (opts.formula_id,))
             records_after = self.snapshot_pgf_managed_object(db_model)
             # logger.info(f"Before: {records_before}, After: {records_after}")
-            assert records_before == records_after, f"Before: {records_before}, After: {records_after}"
+            assert records_before == records_after, f"Before refresh:\n{records_before}\n\nAfter refresh:\n{records_after}"
     
     def snapshot_pgf_managed_object(self, db_model: DbModel):
-        table = db_model.get_pgf_managed_table()
+        table = db_model.pgf_managed_table
         if table is not None:
             return self.snapshot_table(table)
         else:
-            tc_tuple = db_model.get_pgf_managed_column()
+            tc_tuple = db_model.pgf_managed_column
             assert tc_tuple is not None
             (table, column) = tc_tuple
             return self.snapshot_column(table, column)
@@ -438,21 +452,22 @@ class DbFuzzer:
         if pgf_managed_table is None:
             raise ValueError(f"No table model found for managed object {opts.pgf_managed_object}")
         
-        pgf_managed_table.pgf_managed = True
+        
         if pgf_managed_column_name:
             pgf_managed_column = pgf_managed_table.get_column_by_name(pgf_managed_column_name)
             if pgf_managed_column is None:
                 raise ValueError(f"No column model found for managed object {opts.pgf_managed_object}")
             pgf_managed_column.pgf_managed = True
+        else:
+            pgf_managed_table.pgf_managed = True
 
-        for t in db_model.tables:
-            t.refresh()
+        db_model.refresh()
 
         return db_model
 
     def fuzz_single_iteration(self, db_model: DbModel, force_sql_op=None):
         sql_op = force_sql_op if force_sql_op is not None else choice(list(SqlOperationType))
-        table = choice(db_model.tables)
+        table = choice(db_model.non_pgf_managed_tables)
         self.apply_sql_operation(sql_op, table, db_model)
 
     

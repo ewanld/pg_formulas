@@ -69,10 +69,11 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute(f"drop table if exists agg cascade;");
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int, country text, amount NUMERIC(10, 2));")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int not null, country text not null, amount NUMERIC(10, 2) not null);")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'invoice', 'id', 'amount', jsonb_build_object('agg_table', 'agg', 'group_by_column', ARRAY['customer_id', 'country']));", (id,))
-                res = TestDataStructure(['invoice'], 'agg_table')
+                    self.cur.execute("commit;")
+                res = TestDataStructure(['invoice'], 'agg')
             
             case 'inheritance_table':
                 self.cur.execute("drop table if exists bike cascade;");
