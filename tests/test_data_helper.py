@@ -33,7 +33,7 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default 0);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id) on delete cascade, amount numeric);")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
                 res = TestDataStructure(['invoice', 'customer'], f'customer.{kind}_amount')
@@ -42,7 +42,7 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount numeric default NULL);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id) on delete cascade, amount numeric);")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'customer_id', 'amount');", (id,))
                 res = TestDataStructure(['invoice', 'customer'], f'customer.{kind}_amount')
@@ -51,7 +51,7 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, {kind}_amount int default NULL);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), amount numeric);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id) on delete cascade, amount numeric);")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', '{kind}_amount', 'invoice', 'id', 'customer_id', 'amount');", (id,))
                 res = TestDataStructure(['invoice', 'customer'], f'customer.{kind}_amount')
@@ -60,7 +60,7 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists invoice cascade;");
                 self.cur.execute("drop table if exists customer cascade;");
                 self.cur.execute(f"create table customer (id int PRIMARY KEY, name text, invoice_names text[] default NULL);")
-                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id), visible boolean);")
+                self.cur.execute("create table invoice(id int PRIMARY KEY, name text, customer_id int references customer(id) on delete cascade, visible boolean not null);")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, 'customer', 'id', 'invoice_names', 'invoice', 'customer_id', 'name');", (id,))
                 res = TestDataStructure(['invoice', 'customer'], 'customer.invoice_names')
@@ -119,9 +119,9 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists b cascade;");
                 self.cur.execute("drop table if exists c cascade;");
                 self.cur.execute("drop table if exists intersect_table cascade;");
-                self.cur.execute("create table a(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("create table b(column1 text, column2 int, column3 text default '');")
-                self.cur.execute("create table c(column1 text, column2 int, column3 text default '');")
+                self.cur.execute("create table a(column1 text not null, column2 int not null, column3 text default '');")
+                self.cur.execute("create table b(column1 text not null, column2 int not null, column3 text default '');")
+                self.cur.execute("create table c(column1 text not null, column2 int not null, column3 text default '');")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
                 res = TestDataStructure(['a', 'b', 'c'], 'intersect_table')

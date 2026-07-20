@@ -1600,6 +1600,11 @@ BEGIN
 					update %I set row_count=row_count-1 -- agg_table
 					where %s; -- where_condition_on_group_by
 
+					/* handle case when row_count goes down to zero -> row should be removed */
+					delete from %I -- agg_table
+					where row_count = 0
+					and %s; -- where_condition_on_group_by
+
 					if id_of_min_val = OLD.%I then -- pk
 						update %I set -- agg_table
 							min_value = (select min(%I) from %I where %s), -- aggregate_column, table_name, where_condition_on_group_by
@@ -1613,31 +1618,33 @@ BEGIN
 						where %s; -- where_condition_on_group_by
 					end if;
 		$fun$
-		, id
-		, table_name, pk
-		, table_name, pk
-		, agg_table, group_by_columns_joined
-		, group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
-		, group_by_columns_joined
-		, agg_table, aggregate_column
-		, aggregate_column, agg_table, pk, agg_table
-		, agg_table, aggregate_column
-		, aggregate_column, agg_table, pk, agg_table
-		, agg_table
-		, agg_table
-		, where_condition_on_group_by
-		, agg_table
-		, where_condition_on_group_by
-		, pk
-		, agg_table
-		, aggregate_column, table_name, where_condition_on_group_by
-		, pk, table_name, where_condition_on_group_by, aggregate_column
-		, where_condition_on_group_by
-		, pk
-		, agg_table
-		, aggregate_column, table_name, where_condition_on_group_by
-		, pk, table_name, where_condition_on_group_by, aggregate_column
-		, where_condition_on_group_by
+        , id
+        , table_name, pk
+        , table_name, pk
+        , agg_table, group_by_columns_joined
+        , group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
+        , group_by_columns_joined
+        , agg_table, aggregate_column
+        , aggregate_column, agg_table, pk, agg_table
+        , agg_table, aggregate_column
+        , aggregate_column, agg_table, pk, agg_table
+        , agg_table
+        , agg_table
+        , where_condition_on_group_by
+        , agg_table
+        , where_condition_on_group_by
+        , agg_table
+        , where_condition_on_group_by
+        , pk
+        , agg_table
+        , aggregate_column, table_name, where_condition_on_group_by
+        , pk, table_name, where_condition_on_group_by, aggregate_column
+        , where_condition_on_group_by
+        , pk
+        , agg_table
+        , aggregate_column, table_name, where_condition_on_group_by
+        , pk, table_name, where_condition_on_group_by, aggregate_column
+        , where_condition_on_group_by
 		) || format($fun$
 				ELSIF TG_OP = 'UPDATE' then
 					/* Only update if group by columns changed */
@@ -1651,6 +1658,11 @@ BEGIN
 
 						update %I set row_count=row_count-1 -- agg_table
 						where %s; -- where_condition_on_group_by
+
+						/* handle case when row_count goes down to zero -> row should be removed */
+						delete from %I -- agg_table
+						where row_count = 0
+						and %s; -- where_condition_on_group_by
 
 						if id_of_min_val = OLD.%I then -- pk
 							update %I set -- agg_table
@@ -1688,36 +1700,39 @@ BEGIN
 			END;
 			$inner_trg$ LANGUAGE plpgsql;
 		$fun$
-		, where_condition_on_group_by_OLDNEW
-		, agg_table
-		, where_condition_on_group_by
-		, agg_table
-		, where_condition_on_group_by
-		, pk
-		, agg_table
-		, aggregate_column, table_name, where_condition_on_group_by
-		, pk, table_name, where_condition_on_group_by, aggregate_column
-		, where_condition_on_group_by
-		, pk
-		, agg_table
-		, aggregate_column, table_name, where_condition_on_group_by
-		, pk, table_name, where_condition_on_group_by, aggregate_column
-		, where_condition_on_group_by
-		, agg_table, group_by_columns_joined
-		, group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
-		, group_by_columns_joined
-		, agg_table, aggregate_column
-		, aggregate_column, agg_table, pk, agg_table
-		, agg_table, aggregate_column
-		, aggregate_column, agg_table, pk, agg_table
-		, agg_table
-		, aggregate_column, aggregate_column
-		, agg_table
-		, aggregate_column, table_name, where_condition_on_group_by
-		, pk, table_name, where_condition_on_group_by, aggregate_column
-		, aggregate_column, table_name, where_condition_on_group_by
-		, pk, table_name, where_condition_on_group_by, aggregate_column
-		, where_condition_on_group_by
+        , where_condition_on_group_by_OLDNEW
+        , agg_table
+        , where_condition_on_group_by
+        , agg_table
+        , where_condition_on_group_by
+        , agg_table
+        , where_condition_on_group_by
+        , pk
+        , agg_table
+        , aggregate_column, table_name, where_condition_on_group_by
+        , pk, table_name, where_condition_on_group_by, aggregate_column
+        , where_condition_on_group_by
+        , pk
+        , agg_table
+        , aggregate_column, table_name, where_condition_on_group_by
+        , pk, table_name, where_condition_on_group_by, aggregate_column
+        , where_condition_on_group_by
+        , agg_table, group_by_columns_joined
+        , group_by_columns_new_joined, aggregate_column, pk, aggregate_column, pk
+        , group_by_columns_joined
+        , agg_table, aggregate_column
+        , aggregate_column, agg_table, pk, agg_table
+        , agg_table, aggregate_column
+        , aggregate_column, agg_table, pk, agg_table
+        , agg_table
+        , aggregate_column, aggregate_column
+        , agg_table
+        , aggregate_column, table_name, where_condition_on_group_by
+        , pk, table_name, where_condition_on_group_by, aggregate_column
+        , aggregate_column, table_name, where_condition_on_group_by
+        , pk, table_name, where_condition_on_group_by, aggregate_column
+        , where_condition_on_group_by
+
 	);
 	execute str;
 
@@ -2220,7 +2235,8 @@ BEGIN
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (%s);', base_table_name, col_defs);
 
     -- create refresh procedure: copy all sub-tables into base table
-	sql := '';
+	sql := format('delete from %I;', base_table_name);
+
     FOR i IN 1..array_length(sub_tables, 1) LOOP
         -- Get columns for this sub-table
         sub_cols := ARRAY[]::TEXT[];
