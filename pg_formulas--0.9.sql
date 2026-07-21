@@ -1262,19 +1262,19 @@ BEGIN
 			    update %I set %I = NULL; -- base_table_name, base_aggregate_column
 				update %I set %I = sub.id -- base_table_name, base_aggregate_column
 				from (
-					select distinct on (%I) %I as id -- linked_fk, linked_pk
+					select distinct on (%I) %I as parent_id, %I as id -- linked_fk, linked_fk, linked_pk
 					from %I -- linked_table_name
 					where %s -- row_filter
 					order by %I, %I -- linked_fk, linked_value_column
 				) as sub
-				where %I.%I = sub.id; -- base_table_name, base_pk
+				where %I.%I = sub.parent_id; -- base_table_name, base_pk
 			end;
 			$inner_proc2$;
 		$inner_proc$
         , id
         , base_table_name, base_aggregate_column
         , base_table_name, base_aggregate_column
-        , linked_fk, linked_pk
+        , linked_fk, linked_fk, linked_pk
         , linked_table_name
         , row_filter
         , linked_fk, linked_value_column

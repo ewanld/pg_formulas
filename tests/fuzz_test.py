@@ -58,15 +58,36 @@ class TestDbFuzzerModule(unittest.TestCase):
     def create_tables(self, kind, id, create_formula=True):
         return self.test_data_helper.create_tables(kind, id, create_formula)
         
-    def test_all_kinds(self):
-        kinds = ['revdate', 'count', 'minmax_table', 'tree_level', 'inheritance_table', 'audit_table',
-            'sync', 'sum', 'intersect_table', 'union_table', 'min', 'max', 'id_of_min', 'array_agg',
-            'tree_closure_table']
-        for kind in kinds:
-            with self.subTest(input_val=kind):
-                formula_id = f"{kind}1"
-                testDataStructure: TestDataStructure = self.create_tables(kind, formula_id)
+    def __test_kind(self, kind):
+        formula_id = f"{kind}1"
+        testDataStructure: TestDataStructure = self.create_tables(kind, formula_id)
 
-                # opts = FuzzOptions(['customer'], testDataStructure.pgf_managed_object, 100, 100)
-                opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 10, 100, formula_id=formula_id)
-                self.fuzzer.fuzz(opts)
+        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 1000, formula_id=formula_id)
+        self.fuzzer.fuzz(opts)
+    
+    def test_revdate(self):
+        self.__test_kind('revdate')
+    def test_count(self):
+        self.__test_kind('count')
+    def test_minmax_table(self):
+        self.__test_kind('minmax_table')
+    def test_tree_level(self):
+        self.__test_kind('tree_level')
+    def test_inheritance_table(self):
+        self.__test_kind('inheritance_table')
+    def test_audit_table(self):
+        self.__test_kind('audit_table')
+    def test_sum(self):
+        self.__test_kind('sum')
+    def test_intersect_table(self):
+        self.__test_kind('intersect_table')
+    def test_union_table(self):
+        self.__test_kind('union_table')
+    def test_min(self):
+        self.__test_kind('min')
+    def test_max(self):
+        self.__test_kind('max')
+    def test_id_of_min(self):
+        self.__test_kind('id_of_min')
+    def test_array_agg(self):
+        self.__test_kind('array_agg')

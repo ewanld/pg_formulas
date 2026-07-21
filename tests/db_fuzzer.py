@@ -127,8 +127,12 @@ class TableModel:
     
     # generated id is added to the ids attribute.
     def generate_random_id(self) -> TableId:
-        i = 0
         candidate: dict[str, Any] = {}
+
+        if len(self.pk) == 0:
+            return TableId(candidate)
+    
+        i = 0
         while i < 10000:
             for col in self.pk:
                 candidate[col.name] = DbFuzzer.generate_random_value(col)
@@ -137,7 +141,7 @@ class TableModel:
                 self.__ids_values_tuples.add(self.convert_table_id_to_tuple(candidate_tableId))
                 return candidate_tableId
             i+=1
-        raise ValueError("Cannot generate random id after 10000 iterations")
+        raise ValueError(f"Cannot generate random id after 10000 iterations. {self.name}")
 
     def is_empty(self):
         return len(self.__ids_values_tuples) == 0
@@ -519,6 +523,9 @@ class DbFuzzer:
                 self.DbInsertOperation(table, id, insert_values).apply(self.cur)
                 
             case SqlOperationType.update:
+                if len(table.pk) == 0:
+                    raise ValueError(f"Cannot upadte table {table.name} without PK")
+                
                 if table.is_empty():
                     logger.info(f"UPDATE aborted (table {table.name} is empty)")
                     return
@@ -570,6 +577,9 @@ class DbFuzzer:
                 self.DbUpdateOperation(table, update_id, update_values).apply(self.cur)
 
             case SqlOperationType.delete:
+                if len(table.pk) == 0:
+                    raise ValueError(f"Cannot delete from table {table.name} without PK")
+                
                 if table.is_empty():
                     logger.info(f"DELETE aborted (table {table.name} is empty)")
                     return
