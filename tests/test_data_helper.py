@@ -119,9 +119,9 @@ class TestDataHelper:
                 self.cur.execute("drop table if exists b cascade;");
                 self.cur.execute("drop table if exists c cascade;");
                 self.cur.execute("drop table if exists intersect_table cascade;");
-                self.cur.execute("create table a(column1 text not null, column2 int not null, column3 text default '');")
-                self.cur.execute("create table b(column1 text not null, column2 int not null, column3 text default '');")
-                self.cur.execute("create table c(column1 text not null, column2 int not null, column3 text default '');")
+                self.cur.execute("create table a(id int primary key, column1 text not null, column2 int not null, column3 text default '');")
+                self.cur.execute("create table b(id int primary key, column1 text not null, column2 int not null, column3 text default '');")
+                self.cur.execute("create table c(id int primary key, column1 text not null, column2 int not null, column3 text default '');")
                 if (create_formula):
                     self.cur.execute(f"call pgf_{kind}(%s, ARRAY['a', 'b', 'c'], ARRAY['column1', 'column2'], 'intersect_table')", (id,))
                 res = TestDataStructure(['a', 'b', 'c'], 'intersect_table')

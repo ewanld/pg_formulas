@@ -2738,7 +2738,7 @@ BEGIN
 		-- Create trigger
 		EXECUTE format($trg$
 			CREATE TRIGGER _pgf_internal_combined_table_trg_%I_%I -- id, t
-			BEFORE INSERT OR UPDATE OR DELETE ON %I -- t
+			AFTER INSERT OR UPDATE OR DELETE ON %I -- t
 			FOR EACH ROW EXECUTE FUNCTION _pgf_internal_combined_table_trgfun_%I_%I(); -- id, t
 		$trg$
 			, id, t

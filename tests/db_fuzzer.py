@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from random import Random, choice, randint
 import random
+import sys
 from typing import Any, Optional
 import logging
 
@@ -412,8 +413,41 @@ class DbFuzzer:
             self.cur.execute("call pgf_refresh(%s);", (opts.formula_id,))
             records_after = self.snapshot_pgf_managed_object(db_model)
             # logger.info(f"Before: {records_before}, After: {records_after}")
-            assert records_before == records_after, f"Before refresh:\n{records_before}\n\nAfter refresh:\n{records_after}"
+            if records_before != records_after:
+                self.cur.execute("commit;")
+            
+                print("Before :")
+                self.log_records(records_before)
+                print("After :")
+                self.log_records(records_after)
+                sys.stdout.flush()
+                
+                assert False, f"Table contents of {opts.pgf_managed_object} differ"
     
+    def log_records(self, records):
+        """Format records (list of RealDictRow) from database as a table and output to stdout"""
+        if not records:
+            print("No records to display")
+            return
+        
+        # Get column names from first record
+        columns = list(records[0].keys())
+        
+        # Calculate column widths
+        col_widths = {col: len(col) for col in columns}
+        for record in records:
+            for col in columns:
+                col_widths[col] = max(col_widths[col], len(str(record[col])))
+        
+        # Build header and rows
+        header = " | ".join(f"{col:{col_widths[col]}}" for col in columns)
+        separator = "-" * len(header)
+        print(header)
+        print(separator)
+        for record in records:
+            row = " | ".join(f"{str(record[col]):{col_widths[col]}}" for col in columns)
+            print(row)
+
     def snapshot_pgf_managed_object(self, db_model: DbModel):
         table = db_model.pgf_managed_table
         if table is not None:
