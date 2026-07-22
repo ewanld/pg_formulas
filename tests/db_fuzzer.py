@@ -407,22 +407,28 @@ class DbFuzzer:
         db_model = self.create_db_model(opts)
 
         for i in range(opts.initial_insert_iteration_count + opts.iteration_count):
+            # commit once in a while
+            if i % 1000 == 0:
+                self.cur.execute("commit")
+
             force_sql_op = SqlOperationType.insert if i < opts.initial_insert_iteration_count else None
             self.fuzz_single_iteration(db_model, force_sql_op=force_sql_op)
-            records_before = self.snapshot_pgf_managed_object(db_model)
-            self.cur.execute("call pgf_refresh(%s);", (opts.formula_id,))
-            records_after = self.snapshot_pgf_managed_object(db_model)
-            # logger.info(f"Before: {records_before}, After: {records_after}")
-            if records_before != records_after:
-                self.cur.execute("commit;")
-            
-                print("Before :")
-                self.log_records(records_before)
-                print("After :")
-                self.log_records(records_after)
-                sys.stdout.flush()
+
+            if len(opts.pgf_managed_object) > 0:
+                records_before = self.snapshot_pgf_managed_object(db_model)
+                self.cur.execute("call pgf_refresh(%s);", (opts.formula_id,))
+                records_after = self.snapshot_pgf_managed_object(db_model)
+                # logger.info(f"Before: {records_before}, After: {records_after}")
+                if records_before != records_after:
+                    self.cur.execute("commit;")
                 
-                assert False, f"Table contents of {opts.pgf_managed_object} differ"
+                    print("Before :")
+                    self.log_records(records_before)
+                    print("After :")
+                    self.log_records(records_after)
+                    sys.stdout.flush()
+                    
+                    assert False, f"Table contents of {opts.pgf_managed_object} differ"
     
     def log_records(self, records):
         """Format records (list of RealDictRow) from database as a table and output to stdout"""
@@ -472,7 +478,11 @@ class DbFuzzer:
     
     def create_db_model(self, opts: FuzzOptions) -> DbModel:
         # apply pgf_managed_object to TableModel
-        if '.' in opts.pgf_managed_object:
+
+        if len(opts.pgf_managed_object) == 0:
+            pgf_managed_table_name = None
+            pgf_managed_column_name = None
+        elif '.' in opts.pgf_managed_object:
             pgf_managed_table_name = opts.pgf_managed_object.split('.')[0]
             pgf_managed_column_name = opts.pgf_managed_object.split('.')[1]
         else:
@@ -482,21 +492,22 @@ class DbFuzzer:
         all_table_names: set[str] = set(opts.table_names)
         if pgf_managed_table_name is not None:
             all_table_names.add(pgf_managed_table_name)
+        logger.info(all_table_names)
+        logger.info(opts.table_names)
+        logger.info(pgf_managed_table_name)
         db_model = self.__introspect(all_table_names)
 
+        pgf_managed_table = None if pgf_managed_table_name is None else db_model.get_table_by_name(pgf_managed_table_name)
 
-        pgf_managed_table = db_model.get_table_by_name(pgf_managed_table_name)
-
-        if pgf_managed_table is None:
+        if pgf_managed_table_name is not None and pgf_managed_table is None:
             raise ValueError(f"No table model found for managed object {opts.pgf_managed_object}")
         
-        
-        if pgf_managed_column_name:
+        if pgf_managed_column_name and pgf_managed_table:
             pgf_managed_column = pgf_managed_table.get_column_by_name(pgf_managed_column_name)
             if pgf_managed_column is None:
                 raise ValueError(f"No column model found for managed object {opts.pgf_managed_object}")
             pgf_managed_column.pgf_managed = True
-        else:
+        elif pgf_managed_table:
             pgf_managed_table.pgf_managed = True
 
         db_model.refresh()

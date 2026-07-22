@@ -62,7 +62,7 @@ class TestDbFuzzerModule(unittest.TestCase):
         formula_id = f"{kind}1"
         testDataStructure: TestDataStructure = self.create_tables(kind, formula_id)
 
-        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 100, 1000, formula_id=formula_id)
+        opts = FuzzOptions(testDataStructure.created_tables, testDataStructure.pgf_managed_object, 0, 1000, formula_id=formula_id)
         self.fuzzer.fuzz(opts)
     
     def test_revdate(self):
